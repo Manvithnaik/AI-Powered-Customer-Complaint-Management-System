@@ -65,6 +65,19 @@ def get_complaint(complaint_id: int, db: Session = Depends(get_db)):
     return complaint
 
 
+@router.get(
+    "/by-number/{complaint_number}",
+    response_model=ComplaintResponse,
+    summary="Get complaint by complaint number",
+    description="Fetch a single complaint using its ticket number (e.g. `CMP-2026-0002`).",
+)
+def get_complaint_by_number(complaint_number: str, db: Session = Depends(get_db)):
+    complaint = crud.get_complaint_by_number(db=db, complaint_number=complaint_number.upper())
+    if not complaint:
+        raise HTTPException(status_code=404, detail=f"Complaint '{complaint_number}' not found.")
+    return complaint
+
+
 # ─────────────────────────────────────────────────────────
 #  PATCH /api/complaints/{id}
 #  Update specific fields on an existing complaint.

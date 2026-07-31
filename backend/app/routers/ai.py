@@ -25,11 +25,15 @@ Full backend flow:
   PostgreSQL
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from ..database import get_db
+from .. import crud
 from ..agent.graph import run_complaint_pipeline
 from ..agent.date_utils import parse_date
 from ..agent.document_parser import extract_text_from_upload
@@ -123,24 +127,93 @@ def _build_analyze_response(raw_text: str, current_state: Optional[Dict[str, Any
     )
 
 
+def check_db_fetch_intent(text: str, db: Session) -> Optional[AnalyzeResponse]:
+    """
+    Check if the user message is asking to fetch/load/view a saved complaint
+    by its complaint_number (e.g., 'fetch data from CMP-2026-0002').
+    """
+    match = re.search(r"CMP-\d{4}-\d{4}", text, re.IGNORECASE)
+    if match:
+        cmp_number = match.group(0).upper()
+        fetch_keywords = ["fetch", "load", "get", "show", "view", "retrieve", "find", "open", "pull", "data", "search"]
+        text_lower = text.lower()
+        is_fetch = any(k in text_lower for k in fetch_keywords) or len(text.strip()) < 30
+
+        if is_fetch:
+            record = crud.get_complaint_by_number(db=db, complaint_number=cmp_number)
+            if record:
+                completeness = {
+                    "score": 100,
+                    "missing_fields": [],
+                    "present_fields": [
+                        "product_name", "batch_lot_number", "customer_name",
+                        "detailed_description", "complaint_type", "manufacturing_date"
+                    ],
+                    "completeness_level": "Complete"
+                }
+                return AnalyzeResponse(
+                    customer_name=record.customer_name,
+                    complaint_source=record.complaint_source,
+                    product_name=record.product_name,
+                    product_strength_grade=record.product_strength_grade,
+                    batch_lot_number=record.batch_lot_number,
+                    manufacturing_date=str(record.manufacturing_date) if record.manufacturing_date else None,
+                    expiry_date=str(record.expiry_date) if record.expiry_date else None,
+                    quantity_affected=record.quantity_affected,
+                    complaint_type=record.complaint_type,
+                    complaint_date=str(record.complaint_date) if record.complaint_date else None,
+                    detailed_description=record.detailed_description,
+                    initial_severity=record.initial_severity,
+                    priority=record.priority,
+                    ai_risk_rationale=record.ai_risk_rationale or f"Fetched from database record {cmp_number}.",
+                    ai_completeness_check=completeness,
+                    validation_passed=True,
+                    validation_warnings=[],
+                    errors=[],
+                    raw_text_length=len(text),
+                )
+            else:
+                return AnalyzeResponse(
+                    initial_severity="Minor",
+                    priority="Low",
+                    ai_risk_rationale=f"Complaint **{cmp_number}** was not found in the database. Please verify the complaint number.",
+                    ai_completeness_check={
+                        "score": 0,
+                        "missing_fields": [],
+                        "present_fields": [],
+                        "completeness_level": "Not Found"
+                    },
+                    validation_passed=False,
+                    validation_warnings=[f"Record '{cmp_number}' does not exist."],
+                    errors=[f"Complaint '{cmp_number}' not found."],
+                    raw_text_length=len(text),
+                )
+    return None
+
+
 # ─────────────────────────────────────────────────────────
 #  POST /api/ai/analyze
-#  Analyze pasted/raw complaint text
+#  Analyze pasted/raw complaint text or fetch by CMP number
 # ─────────────────────────────────────────────────────────
 
 @router.post(
     "/analyze",
     response_model=AnalyzeResponse,
-    summary="Analyze raw complaint text",
+    summary="Analyze raw complaint text or fetch by CMP number",
     description=(
-        "Run the full AI pipeline (Extraction → Validation → Risk Assessment → Completeness) "
-        "on raw complaint text. Returns structured fields pre-populated for the complaint form. "
-        "Does NOT save to the database — use `POST /api/complaints/` to save after review."
+        "Run the full AI pipeline on raw complaint text, OR fetch an existing complaint "
+        "if the message requests a record by ticket number (e.g. 'fetch data from CMP-2026-0002')."
     ),
 )
-def analyze_text(body: AnalyzeRequest):
+def analyze_text(body: AnalyzeRequest, db: Session = Depends(get_db)):
     if not body.text.strip():
         raise HTTPException(status_code=400, detail="'text' field cannot be empty.")
+
+    # Check if this is a database fetch request (e.g. 'fetch data from CMP-2026-0002')
+    db_response = check_db_fetch_intent(body.text, db)
+    if db_response:
+        return db_response
+
     if len(body.text.strip()) < 20:
         raise HTTPException(
             status_code=400,
