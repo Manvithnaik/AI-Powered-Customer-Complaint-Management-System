@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
-from .routers import complaints
+from .routers import complaints, ai
 
 # ─────────────────────────────────────────────────────────
 #  Initialize FastAPI app
@@ -44,6 +44,7 @@ def on_startup():
 #  Mount routers
 # ─────────────────────────────────────────────────────────
 app.include_router(complaints.router)
+app.include_router(ai.router)
 
 # ─────────────────────────────────────────────────────────
 #  Health check
