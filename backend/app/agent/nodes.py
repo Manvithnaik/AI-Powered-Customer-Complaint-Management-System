@@ -263,16 +263,23 @@ Major (usually High or Medium priority):
   - Significant packaging failure affecting multiple units
   - API purity failures
   - Non-sterile contamination in oral dosage forms
+  - Product appearance defects on dosage units (discoloration, spots, degradation) of unconfirmed cause
 
 Minor (usually Low or Medium priority):
-  - Cosmetic defects (carton printing, label aesthetics)
-  - Minor packaging appearance issues not affecting product
-  - Single isolated unit defect with no safety risk
+  - Cosmetic packaging defects (carton printing, label aesthetics, outer shipping box damage)
+  - Minor packaging appearance issues not affecting dosage unit integrity
+  - Single isolated non-product defect with no safety risk
 
-STRICT CONSTRAINTS ON RISK RATIONALE:
-- Do NOT invent or infer any defects, categories, or facts that are not explicitly stated in the complaint description.
-- For example, if a defect category (like Contamination, Packaging Defect, Assay Failure) is not specified or clear from the description, do NOT guess or say 'it appears to be related to labeling/packaging' or any other specific category.
-- Base your assessment ONLY on the facts present. If the defect details are vague or missing, state that clearly in the rationale. Never make assumptions.
+STRICT RULES ON REASONING AND RATIONALE:
+1. OBSERVED FACTS VS UNCONFIRMED CAUSES:
+   - Distinguish observed physical facts (e.g., dark brown spots or discoloration on capsule shells) from unconfirmed root causes or impacts.
+   - NEVER classify dosage form defects (discoloration, spots, cracking, swelling) as "cosmetic defects" or claim they do not affect potency, purity, or stability before laboratory investigation. Discoloration on dosage units may indicate chemical degradation, moisture ingress, or active instability.
+   - Prefer objective language such as: "The observed discoloration represents an appearance-related product quality defect. The underlying cause and potential impact on product quality have not yet been established and require QMS laboratory investigation."
+
+2. NO HALLUCINATED CATEGORIES:
+   - Do NOT invent or infer defect categories or root causes not stated in the complaint.
+   - Do NOT categorize a dosage form issue as a "Packaging Defect" unless there is explicit evidence of container, bottle, blister, carton, seal, or label damage.
+   - Never assume absence of evidence means absence of risk. If information is unknown, explicitly state that it is unknown.
 
 IMPORTANT:
 - Consider whether the product is an API (Active Pharmaceutical Ingredient — bulk powder/chemical)

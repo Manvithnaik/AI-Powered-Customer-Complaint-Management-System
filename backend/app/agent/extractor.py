@@ -66,7 +66,7 @@ Extract the following fields into a JSON object:
   "manufacturing_date": "Manufacturing date as found in the text (any format). null if not mentioned.",
   "expiry_date": "Expiry or expiration date as found in the text (any format). null if not mentioned.",
   "quantity_affected": "Quantity of product affected (e.g. 20 strips, 500 vials, 10 kg). null if not mentioned.",
-  "complaint_type": "Category of the defect as best described by the text (e.g. Packaging Defect, Contamination, Impurity/Assay Failure, Adverse Event, Labelling Error, Foreign Particle). null if not mentioned.",
+  "complaint_type": "Category of the defect as best described by the text. Must be ONE of: 'Packaging Defect', 'Product Appearance / Discoloration', 'Foreign Particle / Contamination', 'Impurity / Assay Failure', 'Adverse Event', 'Labelling Error', 'Sterility Failure', 'Physical Defect', 'Other'. DO NOT choose Packaging Defect unless there is explicit evidence of container, bottle, blister, carton, seal, or label damage. Discoloration, spots, or appearance defects on the dosage unit itself should be categorized as 'Product Appearance / Discoloration'. null if not mentioned.",
   "complaint_date": "Date when the complaint was raised or received (any format). null if not mentioned.",
   "detailed_description": "A clean, concise factual summary of the complaint issue based ONLY on what is written. Do not add any information."
 }

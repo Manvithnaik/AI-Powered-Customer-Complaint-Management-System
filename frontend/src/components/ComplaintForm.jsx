@@ -6,6 +6,7 @@ import './ComplaintForm.css';
 const COMPLAINT_SOURCES = ['Email', 'Phone', 'Quality Portal', 'Letter', 'Verbal', 'Other'];
 const COMPLAINT_TYPES = [
   'Packaging Defect',
+  'Product Appearance / Discoloration',
   'Foreign Particle / Contamination',
   'Impurity / Assay Failure',
   'Adverse Event',
