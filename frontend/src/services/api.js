@@ -1,10 +1,10 @@
 const BASE = '';  // Vite proxy routes /api/* to FastAPI
 
-export async function analyzeComplaintText(text) {
+export async function analyzeComplaintText(text, currentState = null) {
   const res = await fetch(`${BASE}/api/ai/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, current_state: currentState }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

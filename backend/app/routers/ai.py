@@ -43,6 +43,7 @@ router = APIRouter(prefix="/api/ai", tags=["AI Pipeline"])
 
 class AnalyzeRequest(BaseModel):
     text: str
+    current_state: Optional[Dict[str, Any]] = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -84,12 +85,12 @@ def _to_iso(raw_date_str: Optional[str]) -> Optional[str]:
     return str(parsed) if parsed else None
 
 
-def _build_analyze_response(raw_text: str) -> AnalyzeResponse:
+def _build_analyze_response(raw_text: str, current_state: Optional[Dict[str, Any]] = None) -> AnalyzeResponse:
     """
     Run the full LangGraph complaint pipeline and format the result
     into an AnalyzeResponse ready for the frontend / Swagger consumer.
     """
-    result = run_complaint_pipeline(raw_text)
+    result = run_complaint_pipeline(raw_text, current_state)
     fields = result.get("extracted_fields", {})
 
     return AnalyzeResponse(
@@ -145,7 +146,7 @@ def analyze_text(body: AnalyzeRequest):
             status_code=400,
             detail="Complaint text is too short (minimum 20 characters). Please provide the full complaint.",
         )
-    return _build_analyze_response(body.text)
+    return _build_analyze_response(body.text, body.current_state)
 
 
 # ─────────────────────────────────────────────────────────

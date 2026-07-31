@@ -4,9 +4,13 @@ import { analyzeComplaintText, analyzeComplaintFile, saveComplaint } from '../se
 // ─── Async Thunks ───────────────────────────────────────────────
 export const analyzeText = createAsyncThunk(
   'complaint/analyzeText',
-  async (text, { rejectWithValue }) => {
+  async (text, { rejectWithValue, getState }) => {
     try {
-      return await analyzeComplaintText(text);
+      // Send the current form state so the backend can detect follow-up intent
+      const currentForm = getState().complaint.form;
+      // Only send if there is at least a product name (draft is active)
+      const currentState = currentForm.product_name ? currentForm : null;
+      return await analyzeComplaintText(text, currentState);
     } catch (err) {
       return rejectWithValue(err.message);
     }
@@ -115,19 +119,11 @@ const complaintSlice = createSlice({
     const onAnalysisPending = (state, action) => {
       state.analysis.status = 'loading';
       state.analysis.error = null;
-      state.analysis.completeness = null;
-      state.analysis.validation_warnings = [];
-      state.analysis.validation_passed = true;
-
-      // Reset the form draft to empty values
-      state.form = { ...emptyForm };
-
-      // Reset save states
-      state.saveStatus = 'idle';
-      state.saveError = null;
-      state.savedComplaint = null;
-
-      // Clear AI highlights
+      // NOTE: We do NOT reset form fields here.
+      // The backend detects whether this is a new complaint or a follow-up.
+      // On fulfilled, the response always contains the correct merged/fresh state.
+      // If we blanked the form now, follow-up analyses would flash empty fields
+      // during the loading phase, and the form would lose the original description.
       state.aiPopulatedFields = [];
     };
 
@@ -165,7 +161,7 @@ const complaintSlice = createSlice({
       });
       state.aiPopulatedFields = populated;
 
-      // Build assistant response message
+      // Build assistant response message — detect if this was a follow-up
       const severity = data.initial_severity || 'Unknown';
       const score = data.ai_completeness_check?.score || 0;
       const level = data.ai_completeness_check?.completeness_level || '';
@@ -173,11 +169,16 @@ const complaintSlice = createSlice({
       const missingStr = missing.length > 0
         ? ` Missing: ${missing.slice(0, 3).map(m => m.label).join(', ')}.`
         : ' All key fields captured.';
+      // Determine if this was an update vs new by checking if description was preserved
+      const isUpdate = !!(data.product_name && populated.length > 0 && populated.length < 8);
+      const intro = isUpdate
+        ? `Complaint updated successfully. I've merged the new information into the existing draft.`
+        : `Complaint parsed successfully. I've extracted the product details and mapped the batch information.`;
 
       state.chat.push({
         id: Date.now(),
         role: 'assistant',
-        content: `Complaint parsed successfully. I've extracted the product details and mapped the batch information.\n\n**Risk Assessment:** ${severity} severity — ${data.priority} priority.\n**Completeness:** ${score}/100 (${level}).${missingStr}\n\n${data.ai_risk_rationale || ''}`,
+        content: `${intro}\n\n**Risk Assessment:** ${severity} severity — ${data.priority} priority.\n**Completeness:** ${score}/100 (${level}).${missingStr}\n\n${data.ai_risk_rationale || ''}`,
         timestamp: Date.now(),
         isAnalysis: true,
         severity,

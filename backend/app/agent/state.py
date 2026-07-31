@@ -21,9 +21,11 @@ from typing_extensions import TypedDict
 class ComplaintState(TypedDict):
     # ── Input ─────────────────────────────────────────
     raw_text: str                          # Raw complaint text from user
+    current_state: Optional[Dict[str, Any]] # Current form draft state (if any)
 
     # ── Extraction Node Output ─────────────────────────
     extracted_fields: Dict[str, Any]       # Factual fields extracted from text
+
 
     # ── Validation Node Output ─────────────────────────
     validation_passed: bool                # True if no blocking logical errors

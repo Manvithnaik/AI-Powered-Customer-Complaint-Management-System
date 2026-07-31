@@ -15,7 +15,7 @@ import os
 import json
 import re
 from datetime import date
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
@@ -32,6 +32,73 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # llama-3.3-70b-versatile: used for reasoning-heavy tasks (risk assessment)
 REASONING_MODEL = "llama-3.3-70b-versatile"
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Intent Classification Prompts & Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+CLASSIFY_INTENT_PROMPT = """You are a pharmaceutical Quality Management System (QMS) intake assistant.
+
+Analyze the user's new message to determine if it is:
+1. A FOLLOW_UP / UPDATE / CORRECTION / SUPPLEMENT to the current complaint draft.
+2. A completely NEW, unrelated complaint.
+
+Current complaint draft:
+- Product: {product_name}
+- Customer: {customer_name}
+- Batch: {batch_lot_number}
+
+GUIDELINES to classify as FOLLOW_UP (UPDATE):
+- User is adding a missing field (e.g. "the manufacturing date is...", "forgot to mention the batch...")
+- User is correcting a field (e.g. "it is actually 10 strips, not 8", "change the customer to...")
+- User is supplying updates or supplementary details for the product already mentioned in the draft.
+- Common trigger words: "Update...", "Small update...", "Correction...", "Actually...", "I forgot...", "Also..."
+
+Otherwise, classify as NEW.
+
+Response MUST be exactly one word: UPDATE or NEW. Do not output anything else."""
+
+
+def detect_update_intent(text: str, current_state: Optional[Dict[str, Any]]) -> bool:
+    """
+    Detect if the incoming message is a follow-up/update to the current draft
+    or a new complaint.
+    """
+    if not current_state or not current_state.get("product_name"):
+        return False
+
+    try:
+        llm = ChatGroq(
+            model="llama-3.1-8b-instant",
+            api_key=GROQ_API_KEY,
+            temperature=0,
+            max_tokens=5,
+        )
+        product = current_state.get("product_name") or "None"
+        customer = current_state.get("customer_name") or "None"
+        batch = current_state.get("batch_lot_number") or "None"
+
+        prompt = CLASSIFY_INTENT_PROMPT.format(
+            product_name=product,
+            customer_name=customer,
+            batch_lot_number=batch
+        )
+
+        messages = [
+            SystemMessage(content=prompt),
+            HumanMessage(content=f"User Message: \"{text}\""),
+        ]
+
+        response = llm.invoke(messages)
+        res = response.content.strip().upper()
+        return "UPDATE" in res
+    except Exception:
+        # Fallback to keyword matching if Groq is unavailable
+        keywords = ["update", "correct", "change", "forgot", "actually", "received on", "manufacturing", "expiry", "expiration"]
+        text_lower = text.lower()
+        return any(k in text_lower for k in keywords)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  NODE 1 — Extraction
 #  Delegates to the Phase 3 extractor. Wraps in error handling.
@@ -39,13 +106,61 @@ REASONING_MODEL = "llama-3.3-70b-versatile"
 def extraction_node(state: ComplaintState) -> dict:
     """
     Extract factual fields from the raw complaint text.
-    Uses llama-3.1-8b-instant via Groq (fast, lightweight).
-    Returns only facts present in the text — never invents severity/priority.
+    If detected as a follow-up, extracts only the new info and merges it
+    with the current state.
     """
     errors = list(state.get("errors", []))
+    raw_text = state["raw_text"]
+    current_state = state.get("current_state")
+
     try:
-        extracted = extract_complaint_fields(state["raw_text"])
-        return {"extracted_fields": extracted, "errors": errors}
+        # Detect intent
+        is_update = detect_update_intent(raw_text, current_state)
+
+        # Extract fields from the current message
+        newly_extracted = extract_complaint_fields(raw_text)
+
+        if is_update and current_state:
+            # Programmatic Patch / Merge
+            merged = {**current_state}
+
+            for key, val in newly_extracted.items():
+                if val is not None and str(val).strip() != "" and str(val).lower() != "null":
+                    # Special description preservation rule
+                    if key == "detailed_description":
+                        old_desc = current_state.get("detailed_description") or ""
+                        new_desc = val.strip()
+
+                        # Check if new_desc is just parameter updates
+                        lower_new = new_desc.lower()
+                        has_defect_keywords = any(x in lower_new for x in [
+                            "defect", "chipped", "cracked", "broken", "dirty", "particle",
+                            "contamination", "odor", "smell", "color", "failed", "discoloration",
+                            "purity", "active pharmaceutical ingredient", "adverse event"
+                        ])
+                        is_just_parameters = not has_defect_keywords and any(x in lower_new for x in [
+                            "date", "manufacturing", "expiry", "expire", "quantity", "strips",
+                            "bottles", "vials", "kg", "batch", "lot", "update", "correct"
+                        ])
+
+                        if is_just_parameters:
+                            # Keep original defect description
+                            merged[key] = old_desc
+                        else:
+                            # Append supplementary descriptions
+                            if old_desc and new_desc and new_desc not in old_desc:
+                                merged[key] = f"{old_desc}\n[Update]: {new_desc}"
+                            else:
+                                merged[key] = new_desc or old_desc
+                    else:
+                        merged[key] = val
+
+            return {"extracted_fields": merged, "errors": errors}
+
+        else:
+            # Genuinely new complaint — return fresh extraction
+            return {"extracted_fields": newly_extracted, "errors": errors}
+
     except Exception as e:
         errors.append(f"ExtractionNode error: {str(e)}")
         return {"extracted_fields": {}, "errors": errors}
@@ -153,6 +268,11 @@ Minor (usually Low or Medium priority):
   - Cosmetic defects (carton printing, label aesthetics)
   - Minor packaging appearance issues not affecting product
   - Single isolated unit defect with no safety risk
+
+STRICT CONSTRAINTS ON RISK RATIONALE:
+- Do NOT invent or infer any defects, categories, or facts that are not explicitly stated in the complaint description.
+- For example, if a defect category (like Contamination, Packaging Defect, Assay Failure) is not specified or clear from the description, do NOT guess or say 'it appears to be related to labeling/packaging' or any other specific category.
+- Base your assessment ONLY on the facts present. If the defect details are vague or missing, state that clearly in the rationale. Never make assumptions.
 
 IMPORTANT:
 - Consider whether the product is an API (Active Pharmaceutical Ingredient — bulk powder/chemical)

@@ -26,6 +26,8 @@ Usage:
     })
 """
 
+from typing import Any, Dict, Optional
+
 from langgraph.graph import StateGraph, END
 
 from .state import ComplaintState
@@ -64,18 +66,20 @@ def build_complaint_graph():
 complaint_graph = build_complaint_graph()
 
 
-def run_complaint_pipeline(raw_text: str) -> ComplaintState:
+def run_complaint_pipeline(raw_text: str, current_state: Optional[Dict[str, Any]] = None) -> ComplaintState:
     """
     Convenience wrapper to run the full complaint pipeline.
 
     Args:
         raw_text: Raw unstructured complaint text.
+        current_state: Current form draft fields (if any).
 
     Returns:
         The final ComplaintState after all nodes have run.
     """
     initial_state: ComplaintState = {
         "raw_text": raw_text,
+        "current_state": current_state,
         "extracted_fields": {},
         "validation_passed": True,
         "validation_warnings": [],
