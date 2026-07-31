@@ -115,6 +115,20 @@ const complaintSlice = createSlice({
     const onAnalysisPending = (state, action) => {
       state.analysis.status = 'loading';
       state.analysis.error = null;
+      state.analysis.completeness = null;
+      state.analysis.validation_warnings = [];
+      state.analysis.validation_passed = true;
+
+      // Reset the form draft to empty values
+      state.form = { ...emptyForm };
+
+      // Reset save states
+      state.saveStatus = 'idle';
+      state.saveError = null;
+      state.savedComplaint = null;
+
+      // Clear AI highlights
+      state.aiPopulatedFields = [];
     };
 
     const onAnalysisFulfilled = (state, action) => {
@@ -143,8 +157,9 @@ const complaintSlice = createSlice({
         ai_risk_rationale: data.ai_risk_rationale,
       };
       Object.entries(fieldMap).forEach(([key, val]) => {
+        // Explicitly write value, falling back to empty string to overwrite old values
+        state.form[key] = val || '';
         if (val) {
-          state.form[key] = val;
           populated.push(key);
         }
       });
