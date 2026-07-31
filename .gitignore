@@ -1,0 +1,61 @@
+# ─── Python ───────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+*.egg-link
+
+# ─── Virtual Environments ─────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.virtualenv/
+
+# ─── Environment / Secrets ────────────────────────────
+# NEVER commit real credentials
+.env
+*.env
+!.env.example
+
+# ─── SQLite (local fallback — not used in this project) 
+*.db
+*.sqlite3
+
+# ─── IDEs & Editors ───────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Logs ─────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Node (for frontend — Phase 6) ───────────────────
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/.env.local
+
+# ─── Misc ─────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+.coverage
+htmlcov/
