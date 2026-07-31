@@ -1,0 +1,216 @@
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { analyzeComplaintText, analyzeComplaintFile, saveComplaint } from '../services/api';
+
+// ─── Async Thunks ───────────────────────────────────────────────
+export const analyzeText = createAsyncThunk(
+  'complaint/analyzeText',
+  async (text, { rejectWithValue }) => {
+    try {
+      return await analyzeComplaintText(text);
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+export const analyzeFile = createAsyncThunk(
+  'complaint/analyzeFile',
+  async (file, { rejectWithValue }) => {
+    try {
+      return await analyzeComplaintFile(file);
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+export const submitComplaint = createAsyncThunk(
+  'complaint/submitComplaint',
+  async (formData, { rejectWithValue }) => {
+    try {
+      return await saveComplaint(formData);
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+// ─── Initial State ──────────────────────────────────────────────
+const emptyForm = {
+  complaint_source: '',
+  customer_name: '',
+  product_name: '',
+  product_strength_grade: '',
+  batch_lot_number: '',
+  manufacturing_date: '',
+  expiry_date: '',
+  quantity_affected: '',
+  complaint_type: '',
+  complaint_date: '',
+  detailed_description: '',
+  initial_severity: '',
+  priority: '',
+  ai_risk_rationale: '',
+  status: 'Pending Triage',
+};
+
+const initialState = {
+  form: { ...emptyForm },
+  // AI analysis results
+  analysis: {
+    status: 'idle',  // idle | loading | success | error
+    error: null,
+    completeness: null,
+    validation_warnings: [],
+    validation_passed: true,
+  },
+  // Chat thread
+  chat: [
+    {
+      id: 1,
+      role: 'assistant',
+      content: 'Ready to process new complaints. Paste the raw email from the customer, or upload a PDF of the complaint report. I will extract the data and run the initial risk assessment.',
+      timestamp: Date.now(),
+    }
+  ],
+  // Which fields were just AI-populated (drives flash animation)
+  aiPopulatedFields: [],
+  // Save state
+  saveStatus: 'idle',  // idle | loading | success | error
+  saveError: null,
+  savedComplaint: null,
+};
+
+// ─── Slice ──────────────────────────────────────────────────────
+const complaintSlice = createSlice({
+  name: 'complaint',
+  initialState,
+  reducers: {
+    updateField(state, action) {
+      const { field, value } = action.payload;
+      state.form[field] = value;
+    },
+    resetForm(state) {
+      state.form = { ...emptyForm };
+      state.analysis = { ...initialState.analysis };
+      state.aiPopulatedFields = [];
+      state.saveStatus = 'idle';
+      state.savedComplaint = null;
+      state.chat = [initialState.chat[0]];
+    },
+    addUserMessage(state, action) {
+      state.chat.push({
+        id: Date.now(),
+        role: 'user',
+        content: action.payload,
+        timestamp: Date.now(),
+      });
+    },
+    clearAiHighlight(state) {
+      state.aiPopulatedFields = [];
+    },
+  },
+  extraReducers: (builder) => {
+    // ── Analyze Text / File (shared logic) ───────────────────────
+    const onAnalysisPending = (state, action) => {
+      state.analysis.status = 'loading';
+      state.analysis.error = null;
+    };
+
+    const onAnalysisFulfilled = (state, action) => {
+      const data = action.payload;
+      state.analysis.status = 'success';
+      state.analysis.completeness = data.ai_completeness_check;
+      state.analysis.validation_warnings = data.validation_warnings || [];
+      state.analysis.validation_passed = data.validation_passed;
+
+      // Track which fields are AI-populated for animation
+      const populated = [];
+      const fieldMap = {
+        complaint_source: data.complaint_source,
+        customer_name: data.customer_name,
+        product_name: data.product_name,
+        product_strength_grade: data.product_strength_grade,
+        batch_lot_number: data.batch_lot_number,
+        manufacturing_date: data.manufacturing_date,
+        expiry_date: data.expiry_date,
+        quantity_affected: data.quantity_affected,
+        complaint_type: data.complaint_type,
+        complaint_date: data.complaint_date,
+        detailed_description: data.detailed_description,
+        initial_severity: data.initial_severity,
+        priority: data.priority,
+        ai_risk_rationale: data.ai_risk_rationale,
+      };
+      Object.entries(fieldMap).forEach(([key, val]) => {
+        if (val) {
+          state.form[key] = val;
+          populated.push(key);
+        }
+      });
+      state.aiPopulatedFields = populated;
+
+      // Build assistant response message
+      const severity = data.initial_severity || 'Unknown';
+      const score = data.ai_completeness_check?.score || 0;
+      const level = data.ai_completeness_check?.completeness_level || '';
+      const missing = data.ai_completeness_check?.missing_fields || [];
+      const missingStr = missing.length > 0
+        ? ` Missing: ${missing.slice(0, 3).map(m => m.label).join(', ')}.`
+        : ' All key fields captured.';
+
+      state.chat.push({
+        id: Date.now(),
+        role: 'assistant',
+        content: `Complaint parsed successfully. I've extracted the product details and mapped the batch information.\n\n**Risk Assessment:** ${severity} severity — ${data.priority} priority.\n**Completeness:** ${score}/100 (${level}).${missingStr}\n\n${data.ai_risk_rationale || ''}`,
+        timestamp: Date.now(),
+        isAnalysis: true,
+        severity,
+        score,
+      });
+    };
+
+    const onAnalysisRejected = (state, action) => {
+      state.analysis.status = 'error';
+      state.analysis.error = action.payload;
+      state.chat.push({
+        id: Date.now(),
+        role: 'assistant',
+        content: `Analysis failed: ${action.payload}. Please check your connection and try again.`,
+        timestamp: Date.now(),
+        isError: true,
+      });
+    };
+
+    builder
+      .addCase(analyzeText.pending, onAnalysisPending)
+      .addCase(analyzeText.fulfilled, onAnalysisFulfilled)
+      .addCase(analyzeText.rejected, onAnalysisRejected)
+      .addCase(analyzeFile.pending, onAnalysisPending)
+      .addCase(analyzeFile.fulfilled, onAnalysisFulfilled)
+      .addCase(analyzeFile.rejected, onAnalysisRejected)
+      // ── Submit Complaint ────────────────────────────────────────
+      .addCase(submitComplaint.pending, (state) => {
+        state.saveStatus = 'loading';
+        state.saveError = null;
+      })
+      .addCase(submitComplaint.fulfilled, (state, action) => {
+        state.saveStatus = 'success';
+        state.savedComplaint = action.payload;
+        state.chat.push({
+          id: Date.now(),
+          role: 'assistant',
+          content: `Complaint saved successfully as **${action.payload.complaint_number}**. Status: ${action.payload.status}.`,
+          timestamp: Date.now(),
+          isSave: true,
+        });
+      })
+      .addCase(submitComplaint.rejected, (state, action) => {
+        state.saveStatus = 'error';
+        state.saveError = action.payload;
+      });
+  },
+});
+
+export const { updateField, resetForm, addUserMessage, clearAiHighlight } = complaintSlice.actions;
+export default complaintSlice.reducer;
