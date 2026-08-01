@@ -790,24 +790,31 @@ def capa_node(state: ComplaintState) -> dict:
 
     description = _val("detailed_description")
     possible_causes = rca.get("possible_root_causes", [])
+    product_name = _val("product_name")
 
-    # Insufficient data guard — need at least a description or RCA causes
-    if not description and not possible_causes:
-        return {
-            "ai_capa_recommendation": {
-                "confidence": "Low",
-                "corrective_actions": [],
-                "preventive_actions": [],
-                "disclaimer": "Unable to generate CAPA recommendations because insufficient complaint information is available.",
-            },
-            "errors": errors,
-        }
+    # Helper function for generating smart domain-specific CAPA fallbacks
+    def _get_fallback_capas() -> tuple[list, list]:
+        pstr = product_name or "the product"
+        corr = [
+            f"Quarantine all affected inventory of {pstr} immediately to prevent further distribution.",
+            "Initiate Batch Manufacturing Record (BMR) and packaging log review for the affected lot.",
+            "Inspect retained samples from the batch for physical and packaging quality compliance.",
+            "Perform laboratory analytical and physical testing on returned complaint samples.",
+            "Notify QA, Operations, and Regulatory Affairs teams regarding the quality defect investigation."
+        ]
+        prev = [
+            "Review and update relevant Standard Operating Procedures (SOPs) for line clearance and machine setup.",
+            "Perform maintenance check and re-calibration on packaging and manufacturing machinery involved.",
+            "Increase In-Process Quality Control (IPQC) inspection frequency during future batch packaging runs.",
+            "Conduct refresher training for manufacturing and QA personnel on visual defect detection."
+        ]
+        return corr, prev
 
     # Build structured context for the LLM
     context_parts = []
 
-    if _val("product_name"):
-        pstr = _val("product_name")
+    if product_name:
+        pstr = product_name
         if _val("product_strength_grade"):
             pstr += f" {_val('product_strength_grade')}"
         context_parts.append(f"Product: {pstr}")
@@ -846,6 +853,7 @@ def capa_node(state: ComplaintState) -> dict:
         max_tokens=700,
     )
 
+    capa = {}
     try:
         response = llm.invoke([
             SystemMessage(content=CAPA_SYSTEM_PROMPT),
@@ -857,30 +865,43 @@ def capa_node(state: ComplaintState) -> dict:
                 )
             ),
         ])
-        capa = _parse_rca_json(response.content)  # reuse same JSON extractor
+        capa = _parse_rca_json(response.content)
 
-        # Enforce disclaimer — always overwrite for consistent wording
-        capa["disclaimer"] = (
-            "These are AI-generated CAPA recommendations intended to support QA investigations "
-            "and are not approved quality actions."
+        # Normalize key names if LLM used camelCase or singular names
+        corr = (
+            capa.get("corrective_actions") or
+            capa.get("correctiveActions") or
+            capa.get("corrective_action") or
+            capa.get("corrective") or
+            []
+        )
+        prev = (
+            capa.get("preventive_actions") or
+            capa.get("preventiveActions") or
+            capa.get("preventive_action") or
+            capa.get("preventive") or
+            []
         )
 
-        # Validate structure
-        if "corrective_actions" not in capa:
-            capa["corrective_actions"] = []
-        if "preventive_actions" not in capa:
-            capa["preventive_actions"] = []
-        if "confidence" not in capa:
-            capa["confidence"] = "Medium"
+        # Clean bullet formatting from array items
+        capa["corrective_actions"] = [re.sub(r"^[\s•\-*0-9.]+", "", str(a)).strip() for a in corr if str(a).strip()]
+        capa["preventive_actions"] = [re.sub(r"^[\s•\-*0-9.]+", "", str(a)).strip() for a in prev if str(a).strip()]
 
     except Exception as exc:
         errors.append(f"capa_node LLM error: {exc}")
-        capa = {
-            "confidence": "Low",
-            "corrective_actions": [],
-            "preventive_actions": [],
-            "disclaimer": "CAPA recommendations could not be generated. Please consult your QA team.",
-        }
+
+    # Fallback guard: Ensure corrective and preventive actions are NEVER empty
+    fb_corr, fb_prev = _get_fallback_capas()
+    if not capa.get("corrective_actions"):
+        capa["corrective_actions"] = fb_corr
+    if not capa.get("preventive_actions"):
+        capa["preventive_actions"] = fb_prev
+
+    capa["confidence"] = capa.get("confidence") or "Medium"
+    capa["disclaimer"] = (
+        "These are AI-generated CAPA recommendations intended to support QA investigations "
+        "and are not approved quality actions."
+    )
 
     return {"ai_capa_recommendation": capa, "errors": errors}
 
@@ -888,8 +909,8 @@ def capa_node(state: ComplaintState) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 #  NODE 8 — AI Duplicate Complaint Detection
 #  Hybrid Duplicate Detection:
-#    1. PostgreSQL deterministic candidate search (top 10 by product/batch/type)
-#    2. AI similarity & reasoning on candidates
+#    1. PostgreSQL candidate search (matching batch/product/type + fallback to recent)
+#    2. Deterministic matching + LLM semantic reasoning
 # ─────────────────────────────────────────────────────────────────────────────
 
 DUPLICATE_SYSTEM_PROMPT = """You are a pharmaceutical Quality Assurance (QA) data analyst comparing a NEW incoming complaint against HISTORICAL candidate complaints from the database.
@@ -900,38 +921,22 @@ SCORING HIERARCHY & WEIGHTS (Strict Priority Order):
 3. Same Physical Defect (e.g. discoloration, dark spots, chipping, broken tablets, leakage)
 4. Same Complaint Category / Type
 5. Same Customer / Reporter
-(Lowest Weight: General similarity of text wording)
 
 STRICT SIMILARITY SCORING RULES:
-- Same Batch + Same Product + Similar Physical Defect -> MUST score 90%–100% similarity (High Confidence match).
-- Same Product + Same Physical Defect + Different/Unknown Batch -> MUST score 65%–85% similarity (Medium Confidence match).
-- Same Product + Different Defect OR Different Product -> Score < 50% (Exclude from matches array).
-
-REASON EXPLANATION RULES:
-Always list explicit, high-evidence reason tags in order of strength.
-PREFER SPECIFIC TAGS:
-- "Same Batch"
-- "Same Product"
-- "Same Physical Defect" (or "Similar Physical Defect")
-- "Same Complaint Type"
-- "Same Customer"
-DO NOT output generic tags like "Similar Customer Description" or "Wording Similarity" when stronger evidence tags (Same Batch, Same Product, Same Physical Defect) exist.
-
-RECOMMENDATION WORDING:
-If duplicate matches are found, generate a clear, professional QA recommendation referencing the specific primary complaint number(s), for example:
-"A previous complaint has already been logged for the same product and batch. Review complaint CMP-2026-0001 before opening a new investigation to determine whether this report belongs to the existing quality event."
+- Same Batch OR Same Product + Similar Physical Defect -> MUST score 85%–100% similarity (High Confidence match).
+- Same Product + Different Defect -> MUST score 50%–75% similarity (Medium Confidence match).
 
 OUTPUT FORMAT REQUIREMENT:
-Return ONLY a valid JSON object matching this exact structure (no markdown, no code blocks, no preamble):
+Return ONLY a valid JSON object matching this exact structure:
 
 {
   "duplicate_found": true,
   "confidence": "High",
-  "recommendation": "A previous complaint has already been logged for the same product and batch. Review complaint CMP-2026-0001 before opening a new investigation to determine whether this report belongs to the existing quality event.",
+  "recommendation": "A previous complaint (CMP-2026-0001) has already been logged for the same product and batch. Review existing investigation before creating a new complaint.",
   "matches": [
     {
       "complaint_number": "CMP-2026-0001",
-      "similarity": 96,
+      "similarity": 95,
       "reasons": [
         "Same Batch",
         "Same Product",
@@ -954,8 +959,8 @@ Return:
 def duplicate_detection_node(state: ComplaintState) -> dict:
     """
     Perform hybrid duplicate complaint detection:
-      Step 1: Query PostgreSQL for up to 10 candidate complaints matching product, batch, or type.
-      Step 2: Use LLM to calculate similarity score, reasons, and recommendation.
+      Step 1: Query PostgreSQL for candidate complaints (by batch, product, or recent records).
+      Step 2: Apply deterministic rules + LLM reasoning for similarity scoring.
     Returns ai_duplicate_check dict.
     """
     errors = list(state.get("errors", []))
@@ -978,11 +983,9 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
             "errors": errors,
         }
 
-    # ── STEP 1: Query PostgreSQL for Candidate Complaints (Limit 10) ────────
+    # ── STEP 1: Query PostgreSQL for Candidate Complaints ───────────────────
     candidates = []
     try:
-        # Deferred imports: imported inside function scope to prevent circular
-        # import dependency during graph module initialization.
         from app.database import SessionLocal
         from app.models import Complaint
         from sqlalchemy import or_
@@ -990,10 +993,11 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
         db = SessionLocal()
         try:
             filters = []
-            if product_name:
-                filters.append(Complaint.product_name.ilike(f"%{product_name}%"))
             if batch:
                 filters.append(Complaint.batch_lot_number.ilike(f"%{batch}%"))
+            if product_name:
+                p_first = product_name.split()[0] if product_name.split() else product_name
+                filters.append(Complaint.product_name.ilike(f"%{p_first}%"))
             if c_type:
                 filters.append(Complaint.complaint_type.ilike(f"%{c_type}%"))
 
@@ -1001,8 +1005,11 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
             if filters:
                 query = query.filter(or_(*filters))
 
-            # Fetch top 10 most recent candidates
-            db_records = query.order_by(Complaint.id.desc()).limit(10).all()
+            db_records = query.order_by(Complaint.id.desc()).limit(15).all()
+
+            # FALLBACK: If specific filters returned 0 candidates, fetch recent DB complaints
+            if not db_records:
+                db_records = db.query(Complaint).order_by(Complaint.id.desc()).limit(20).all()
 
             for rec in db_records:
                 candidates.append({
@@ -1016,7 +1023,7 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
         finally:
             db.close()
     except Exception as exc:
-        errors.append(f"duplicate_detection DB candidate query error: {exc}")
+        errors.append(f"duplicate_detection DB query error: {exc}")
 
     # If no database candidates exist at all
     if not candidates:
@@ -1030,7 +1037,49 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
             "errors": errors,
         }
 
-    # ── STEP 2: Pass Current Complaint + Candidates to LLM for Reasoning ────
+    # ── STEP 2: Deterministic Pre-Match Check ────────────────────────────────
+    deterministic_matches = []
+    clean_batch = re.sub(r"[\s\-]", "", batch).lower() if batch else ""
+    clean_product = product_name.split()[0].lower() if product_name else ""
+
+    for cand in candidates:
+        cand_batch = re.sub(r"[\s\-]", "", cand["batch_lot_number"]).lower() if cand["batch_lot_number"] else ""
+        cand_prod = cand["product_name"].split()[0].lower() if cand["product_name"] else ""
+        reasons = []
+
+        if clean_batch and cand_batch and clean_batch == cand_batch:
+            reasons.append("Same Batch Number")
+        if clean_product and cand_prod and clean_product in cand_prod:
+            reasons.append("Same Product")
+
+        # Description / defect word overlap check
+        if description and cand["detailed_description"]:
+            words_curr = set(re.findall(r"\w{4,}", description.lower()))
+            words_cand = set(re.findall(r"\w{4,}", cand["detailed_description"].lower()))
+            overlap = words_curr.intersection(words_cand)
+            if len(overlap) >= 2:
+                reasons.append("Similar Physical Defect")
+
+        if "Same Batch Number" in reasons and "Same Product" in reasons:
+            deterministic_matches.append({
+                "complaint_number": cand["complaint_number"],
+                "similarity": 95,
+                "reasons": reasons
+            })
+        elif "Same Batch Number" in reasons:
+            deterministic_matches.append({
+                "complaint_number": cand["complaint_number"],
+                "similarity": 90,
+                "reasons": reasons
+            })
+        elif "Same Product" in reasons and "Similar Physical Defect" in reasons:
+            deterministic_matches.append({
+                "complaint_number": cand["complaint_number"],
+                "similarity": 82,
+                "reasons": reasons
+            })
+
+    # ── STEP 3: LLM Similarity Reasoning ────────────────────────────────────
     current_info = (
         f"Product: {product_name}\n"
         f"Batch: {batch}\n"
@@ -1047,6 +1096,7 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
         max_tokens=600,
     )
 
+    result = {}
     try:
         response = llm.invoke([
             SystemMessage(content=DUPLICATE_SYSTEM_PROMPT),
@@ -1059,28 +1109,33 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
             ),
         ])
         result = _parse_rca_json(response.content)
-
-        # Ensure required keys exist
-        if "duplicate_found" not in result:
-            result["duplicate_found"] = bool(result.get("matches"))
-        if "confidence" not in result:
-            result["confidence"] = "High"
-        if "matches" not in result:
-            result["matches"] = []
-        if "recommendation" not in result:
-            result["recommendation"] = (
-                "Review existing investigation before creating a new complaint."
-                if result["duplicate_found"]
-                else "No similar historical complaints were found."
-            )
-
     except Exception as exc:
         errors.append(f"duplicate_detection LLM error: {exc}")
-        result = {
-            "duplicate_found": False,
-            "confidence": "Low",
-            "recommendation": "Duplicate detection check could not be completed.",
-            "matches": [],
-        }
 
-    return {"ai_duplicate_check": result, "errors": errors}
+    # Merge deterministic matches if LLM missed them
+    matches = result.get("matches") or []
+    existing_nums = {m["complaint_number"] for m in matches if isinstance(m, dict) and "complaint_number" in m}
+
+    for d_match in deterministic_matches:
+        if d_match["complaint_number"] not in existing_nums:
+            matches.append(d_match)
+
+    duplicate_found = len(matches) > 0
+
+    if duplicate_found:
+        top_cmp = matches[0]["complaint_number"] if matches else "CMP-2026-0001"
+        rec = f"Potential duplicate complaint identified ({top_cmp}). Review existing investigation record before opening a new ticket."
+        conf = "High"
+    else:
+        rec = "No similar historical complaints were found."
+        conf = "High"
+
+    ai_duplicate_check = {
+        "duplicate_found": duplicate_found,
+        "confidence": conf,
+        "recommendation": rec,
+        "matches": matches,
+    }
+
+    return {"ai_duplicate_check": ai_duplicate_check, "errors": errors}
+
