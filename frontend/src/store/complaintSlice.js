@@ -170,14 +170,15 @@ const complaintSlice = createSlice({
       state.form.ai_duplicate_check = data.ai_duplicate_check ?? null;
       state.aiPopulatedFields = populated;
 
-      // Build assistant response message — detect if this was a follow-up
       const severity = data.initial_severity || 'Unknown';
-      const score = data.ai_completeness_check?.score || 0;
+      const rawScore = data.ai_completeness_check?.score;
+      const score = rawScore != null ? rawScore : null;
+      const scoreDisplay = score != null ? `${score}/100` : 'N/A';
       const level = data.ai_completeness_check?.completeness_level || '';
       const missing = data.ai_completeness_check?.missing_fields || [];
       const missingStr = missing.length > 0
         ? ` Missing: ${missing.slice(0, 3).map(m => m.label).join(', ')}.`
-        : ' All key fields captured.';
+        : score != null ? ' All key fields captured.' : '';
       // Determine if this was an update vs new by checking if description was preserved
       const isUpdate = !!(data.product_name && populated.length > 0 && populated.length < 8);
       const intro = isUpdate
@@ -187,7 +188,7 @@ const complaintSlice = createSlice({
       state.chat.push({
         id: Date.now(),
         role: 'assistant',
-        content: `${intro}\n\n**Risk Assessment:** ${severity} severity — ${data.priority} priority.\n**Completeness:** ${score}/100 (${level}).${missingStr}\n\n${data.ai_risk_rationale || ''}`,
+        content: `${intro}\n\n**Risk Assessment:** ${severity} severity — ${data.priority} priority.\n**Completeness:** ${scoreDisplay} (${level}).${missingStr}\n\n${data.ai_risk_rationale || ''}`,
         timestamp: Date.now(),
         isAnalysis: true,
         severity,

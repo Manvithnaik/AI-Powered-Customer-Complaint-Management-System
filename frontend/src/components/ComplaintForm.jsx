@@ -482,16 +482,24 @@ export default function ComplaintForm() {
           <div className="completeness-bar-wrapper fade-in">
             <div className="completeness-bar-header">
               <span>Completeness</span>
-              <span className={`completeness-score ${completeness.score >= 80 ? 'score-good' : completeness.score >= 50 ? 'score-ok' : 'score-low'}`}>
-                {completeness.score}/100 — {completeness.completeness_level}
-              </span>
+              {completeness.score != null ? (
+                <span className={`completeness-score ${completeness.score >= 80 ? 'score-good' : completeness.score >= 50 ? 'score-ok' : 'score-low'}`}>
+                  {completeness.score}/100 — {completeness.completeness_level}
+                </span>
+              ) : (
+                <span className="completeness-score score-na">
+                  {completeness.completeness_level || 'Not Available'}
+                </span>
+              )}
             </div>
             <div className="completeness-track">
               <div
                 className="completeness-fill"
                 style={{
-                  width: `${completeness.score}%`,
-                  background: completeness.score >= 80
+                  width: completeness.score != null ? `${completeness.score}%` : '0%',
+                  background: completeness.score == null
+                    ? 'linear-gradient(90deg, #6b7280, #4b5563)'
+                    : completeness.score >= 80
                     ? 'linear-gradient(90deg, #22c55e, #16a34a)'
                     : completeness.score >= 50
                     ? 'linear-gradient(90deg, #f59e0b, #d97706)'
@@ -509,6 +517,7 @@ export default function ComplaintForm() {
             )}
           </div>
         )}
+
 
         {/* ── Actions ── */}
         <div className="form-actions">

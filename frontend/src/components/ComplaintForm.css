@@ -660,6 +660,7 @@
 .score-good { color: #4ade80; }
 .score-ok   { color: #fbbf24; }
 .score-low  { color: #f87171; }
+.score-na   { color: #9ca3af; font-style: italic; }
 
 .completeness-track {
   height: 5px;

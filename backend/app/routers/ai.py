@@ -150,15 +150,26 @@ def check_db_fetch_intent(text: str, db: Session) -> Optional[AnalyzeResponse]:
         if is_fetch:
             record = crud.get_complaint_by_number(db=db, complaint_number=cmp_number)
             if record:
-                completeness = record.ai_completeness_check or {
-                    "score": 100,
-                    "missing_fields": [],
-                    "present_fields": [
-                        "product_name", "batch_lot_number", "customer_name",
-                        "detailed_description", "complaint_type", "manufacturing_date"
-                    ],
-                    "completeness_level": "Complete"
-                }
+                # ── BUG FIX ───────────────────────────────────────────────────────
+                # Previously used `record.ai_completeness_check or { score: 100 }`
+                # which silently replaced the real stored completeness data with a
+                # fake "100% complete" default whenever the value was falsy.
+                # The correct behaviour: return exactly what is stored in PostgreSQL.
+                # Only substitute a fallback sentinel when the column is genuinely NULL
+                # (i.e. the complaint predates the completeness feature).
+                # -----------------------------------------------------------------
+                if record.ai_completeness_check is not None:
+                    completeness = record.ai_completeness_check
+                else:
+                    # Column is NULL — complaint was saved before completeness was
+                    # calculated. Return a neutral sentinel so the UI knows data is
+                    # unavailable (not that the complaint is 100% complete).
+                    completeness = {
+                        "score": None,
+                        "missing_fields": [],
+                        "present_fields": [],
+                        "completeness_level": "Not Available"
+                    }
                 return AnalyzeResponse(
                     customer_name=record.customer_name,
                     complaint_source=record.complaint_source,
