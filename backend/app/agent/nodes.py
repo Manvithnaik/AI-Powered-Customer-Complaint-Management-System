@@ -7,15 +7,19 @@ The returned dict is merged into the state by LangGraph.
 Node responsibilities:
   1. extraction_node       — Extract facts from raw text (NO inference)
   2. validation_node       — Validate logical consistency (Python-based, no LLM)
-  3. risk_assessment_node  — Determine severity + priority + rationale (LLM)
+  3. risk_assessment_node  — Determine severity + priority + rationale (LLM - llama-3.3-70b)
   4. completeness_check_node — Score completeness + list missing fields (Python-based)
+  5. summary_node          — Generate executive QA summary paragraph (LLM - llama-3.1-8b)
+  6. rca_node              — Formulate root cause investigation hypotheses (LLM - llama-3.3-70b)
+  7. capa_node             — Recommend immediate, corrective, and preventive actions (LLM - llama-3.3-70b)
+  8. duplicate_detection_node — Search past DB records & score duplicate similarity (Hybrid SQL + LLM)
 """
 
 import os
 import json
 import re
 from datetime import date
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
@@ -29,8 +33,16 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# llama-3.3-70b-versatile: used for reasoning-heavy tasks (risk assessment)
+# Model configuration
+FAST_MODEL = "llama-3.1-8b-instant"
 REASONING_MODEL = "llama-3.3-70b-versatile"
+
+
+def _safe_val(fields: dict, key: str) -> str:
+    """Helper to safely retrieve a non-empty string field value."""
+    v = fields.get(key)
+    return str(v).strip() if v and str(v).strip().lower() not in ("", "null", "none") else ""
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -183,7 +195,7 @@ def validation_node(state: ComplaintState) -> dict:
     Does NOT call any LLM — all deterministic Python logic.
     """
     fields = state.get("extracted_fields", {})
-    warnings: list[str] = []
+    warnings: List[str] = []
     errors = list(state.get("errors", []))
     passed = True
 
@@ -664,7 +676,7 @@ def rca_node(state: ComplaintState) -> dict:
     complaint_context = "\n".join(context_parts)
 
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model=REASONING_MODEL,
         api_key=GROQ_API_KEY,
         temperature=0.3,
         max_tokens=600,
@@ -828,7 +840,7 @@ def capa_node(state: ComplaintState) -> dict:
     complaint_context = "\n".join(context_parts)
 
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model=REASONING_MODEL,
         api_key=GROQ_API_KEY,
         temperature=0.2,
         max_tokens=700,
@@ -949,14 +961,10 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
     errors = list(state.get("errors", []))
     fields = state.get("extracted_fields", {})
 
-    def _val(key: str) -> str:
-        v = fields.get(key)
-        return str(v).strip() if v and str(v).strip().lower() not in ("", "null", "none") else ""
-
-    product_name = _val("product_name")
-    batch = _val("batch_lot_number")
-    c_type = _val("complaint_type")
-    description = _val("detailed_description")
+    product_name = _safe_val(fields, "product_name")
+    batch = _safe_val(fields, "batch_lot_number")
+    c_type = _safe_val(fields, "complaint_type")
+    description = _safe_val(fields, "detailed_description")
 
     # If product and description are missing, no duplicate check possible
     if not product_name and not description:
@@ -973,6 +981,8 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
     # ── STEP 1: Query PostgreSQL for Candidate Complaints (Limit 10) ────────
     candidates = []
     try:
+        # Deferred imports: imported inside function scope to prevent circular
+        # import dependency during graph module initialization.
         from app.database import SessionLocal
         from app.models import Complaint
         from sqlalchemy import or_
@@ -1031,7 +1041,7 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
     candidates_text = json.dumps(candidates, indent=2)
 
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model=REASONING_MODEL,
         api_key=GROQ_API_KEY,
         temperature=0.1,
         max_tokens=600,

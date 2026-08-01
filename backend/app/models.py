@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 from sqlalchemy import Column, Integer, String, Date, Text, DateTime, JSON
 from sqlalchemy.sql import func
 from .database import Base
@@ -55,7 +55,7 @@ def generate_next_complaint_number(session) -> str:
     Generates a unique, sequential complaint identifier within a row-locked transaction.
     Format: CMP-YYYY-XXXX (e.g. CMP-2026-0001)
     """
-    current_year = datetime.datetime.now().year
+    current_year = datetime.now().year
     prefix = f"CMP-{current_year}-"
     
     # Acquire a row lock on rows matching this year's prefix to block concurrent inserts

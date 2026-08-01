@@ -47,28 +47,11 @@ class ComplaintCreate(ComplaintBase):
 
 
 # ─────────────────────────────────────────────────────────
-#  UPDATE schema  — for future PATCH support (all optional)
+#  UPDATE schema  — for PATCH support (all optional, inherits from Base)
 # ─────────────────────────────────────────────────────────
-class ComplaintUpdate(BaseModel):
-    complaint_source: Optional[str] = None
-    customer_name: Optional[str] = None
-    product_name: Optional[str] = None
-    product_strength_grade: Optional[str] = None
-    batch_lot_number: Optional[str] = None
-    manufacturing_date: Optional[date] = None
-    expiry_date: Optional[date] = None
-    quantity_affected: Optional[str] = None
-    complaint_type: Optional[str] = None
-    complaint_date: Optional[date] = None
-    detailed_description: Optional[str] = None
-    initial_severity: Optional[str] = None
-    priority: Optional[str] = None
+class ComplaintUpdate(ComplaintBase):
     status: Optional[str] = None
-    ai_completeness_check: Optional[Dict[str, Any]] = None
-    ai_risk_rationale: Optional[str] = None
-    ai_complaint_summary: Optional[str] = None
-    ai_capa_rca: Optional[Dict[str, Any]] = None
-    ai_capa_recommendation: Optional[Dict[str, Any]] = None
+
 
 
 # ─────────────────────────────────────────────────────────

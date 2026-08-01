@@ -1,5 +1,5 @@
 """
-AI Endpoints Router — Phase 5
+AI Endpoints Router — Full 8-Node LangGraph Pipeline
 
 Provides:
   POST /api/ai/analyze       — Analyze raw complaint text via LangGraph pipeline
@@ -14,9 +14,9 @@ Full backend flow:
        ↓
   FastAPI (/api/ai/analyze)
        ↓
-  LangGraph (Extraction → Validation → Risk Assessment → Completeness)
+  LangGraph (Extraction → Validation → Risk Assessment → Completeness → Summary → RCA → CAPA → Duplicate Detection)
        ↓
-  Structured JSON Response (extracted fields + severity + completeness)
+  Structured JSON Response (extracted fields + severity + completeness + bonus insights)
        ↓
   User reviews / edits fields
        ↓
@@ -150,7 +150,7 @@ def check_db_fetch_intent(text: str, db: Session) -> Optional[AnalyzeResponse]:
         if is_fetch:
             record = crud.get_complaint_by_number(db=db, complaint_number=cmp_number)
             if record:
-                completeness = {
+                completeness = record.ai_completeness_check or {
                     "score": 100,
                     "missing_fields": [],
                     "present_fields": [
@@ -178,6 +178,9 @@ def check_db_fetch_intent(text: str, db: Session) -> Optional[AnalyzeResponse]:
                     ai_complaint_summary=record.ai_complaint_summary,
                     ai_capa_rca=record.ai_capa_rca,
                     ai_capa_recommendation=record.ai_capa_recommendation,
+                    # Note: ai_duplicate_check is intentionally omitted here — duplicate
+                    # detection runs dynamically on incoming complaints and is not stored in DB.
+                    ai_duplicate_check=None,
                     validation_passed=True,
                     validation_warnings=[],
                     errors=[],

@@ -20,10 +20,12 @@ def seed():
 
     session = SessionLocal()
 
-    # Check if records already exist
-    existing = session.query(Complaint).count()
+    # Check if seed records already exist
+    existing = session.query(Complaint).filter(
+        Complaint.batch_lot_number.in_(["PCM123", "AMX-2026-99B"])
+    ).count()
     if existing > 0:
-        print(f"Database already has {existing} complaint record(s). Skipping duplicate seed creation.")
+        print(f"Seed records already exist in database ({existing} found). Skipping duplicate seed creation.")
         session.close()
         return
 

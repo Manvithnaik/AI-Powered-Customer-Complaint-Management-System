@@ -56,7 +56,6 @@ export default function AiCopilot() {
   const [isDragging, setIsDragging] = useState(false);
   const fileRef = useRef(null);
   const chatEndRef = useRef(null);
-  const textareaRef = useRef(null);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -161,7 +160,6 @@ export default function AiCopilot() {
             onChange={handleFileChange}
           />
           <textarea
-            ref={textareaRef}
             id="chat-input"
             className="chat-textarea"
             placeholder="Type a message or paste a complaint…"
