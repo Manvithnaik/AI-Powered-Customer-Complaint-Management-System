@@ -459,3 +459,113 @@ def completeness_check_node(state: ComplaintState) -> dict:
     }
 
     return {"ai_completeness_check": completeness, "errors": errors}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NODE 5 — Complaint Summary
+#  Generates a concise executive summary for QA personnel.
+#  Uses llama-3.1-8b-instant (fast, sufficient for summarisation).
+# ─────────────────────────────────────────────────────────────────────────────
+
+SUMMARY_SYSTEM_PROMPT = """You are a pharmaceutical Quality Assurance specialist writing a complaint summary for a QA reviewer.
+
+Generate a single concise paragraph (60–120 words) that gives a QA engineer an immediate understanding of the complaint.
+
+Include the following elements ONLY if the information is present in the complaint data provided:
+• Customer / reporter name
+• Product name, strength, and batch/lot number
+• Nature of the defect or issue (exactly as described — do not interpret or diagnose)
+• Quantity affected
+• Patient or end-user impact (only if explicitly mentioned)
+• Current risk classification (severity and priority)
+
+STRICT RULES:
+- Do NOT invent or infer any information not present in the data.
+- If a field is missing or null, simply omit it from the summary.
+- Do NOT use bullet points. Write a single flowing paragraph.
+- Do NOT include headings, labels, or any text before or after the paragraph.
+- Return ONLY the summary paragraph text. No markdown. No preamble."""
+
+
+def summary_node(state: ComplaintState) -> dict:
+    """
+    Generate a concise executive QA summary of the complaint.
+    Runs after completeness_check_node; has access to fully merged extracted_fields,
+    risk assessment, and severity/priority classification.
+    """
+    errors = list(state.get("errors", []))
+    fields = state.get("extracted_fields", {})
+
+    # Build a structured context block for the LLM
+    def _val(key: str) -> str:
+        v = fields.get(key)
+        return str(v).strip() if v and str(v).strip().lower() not in ("", "null", "none") else ""
+
+    context_parts = []
+    if _val("customer_name"):
+        context_parts.append(f"Customer: {_val('customer_name')}")
+    if _val("product_name"):
+        product_str = _val("product_name")
+        if _val("product_strength_grade"):
+            product_str += f" {_val('product_strength_grade')}"
+        context_parts.append(f"Product: {product_str}")
+    if _val("batch_lot_number"):
+        context_parts.append(f"Batch/Lot: {_val('batch_lot_number')}")
+    if _val("quantity_affected"):
+        context_parts.append(f"Quantity Affected: {_val('quantity_affected')}")
+    if _val("complaint_type"):
+        context_parts.append(f"Complaint Type: {_val('complaint_type')}")
+    if _val("detailed_description"):
+        context_parts.append(f"Complaint Description: {_val('detailed_description')}")
+    if state.get("initial_severity"):
+        context_parts.append(f"Risk Classification: {state['initial_severity']} severity, {state.get('priority', 'Unknown')} priority")
+
+    if not context_parts:
+        return {
+            "ai_complaint_summary": "Insufficient complaint data to generate a summary.",
+            "errors": errors,
+        }
+
+    complaint_context = "\n".join(context_parts)
+
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        api_key=GROQ_API_KEY,
+        temperature=0.3,
+        max_tokens=200,
+    )
+
+    try:
+        response = llm.invoke([
+            SystemMessage(content=SUMMARY_SYSTEM_PROMPT),
+            HumanMessage(content=f"Generate the QA complaint summary for the following complaint:\n\n{complaint_context}"),
+        ])
+        summary = response.content.strip()
+        # Safety: clamp to avoid runaway responses
+        if len(summary) > 800:
+            summary = summary[:800].rsplit(" ", 1)[0] + "…"
+    except Exception as exc:
+        # Graceful fallback: build a minimal templated summary without LLM
+        errors.append(f"summary_node LLM error: {exc}")
+        parts = []
+        if _val("customer_name"):
+            parts.append(f"{_val('customer_name')} reported")
+        else:
+            parts.append("A complaint was reported")
+        if _val("product_name"):
+            prod = _val("product_name")
+            if _val("product_strength_grade"):
+                prod += f" {_val('product_strength_grade')}"
+            if _val("batch_lot_number"):
+                prod += f" (Batch: {_val('batch_lot_number')})"
+            parts.append(f"regarding {prod}")
+        if _val("detailed_description"):
+            parts.append(f"— {_val('detailed_description')[:200]}")
+        if state.get("initial_severity"):
+            parts.append(
+                f"The complaint has been initially classified as {state['initial_severity']} severity "
+                f"with {state.get('priority', 'Unknown')} priority."
+            )
+        summary = " ".join(parts) + "." if parts else "Summary unavailable."
+
+    return {"ai_complaint_summary": summary, "errors": errors}

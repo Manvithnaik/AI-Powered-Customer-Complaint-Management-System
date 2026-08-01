@@ -281,6 +281,17 @@ export default function ComplaintForm() {
               <p className="rationale-text">{form.ai_risk_rationale}</p>
             </div>
           )}
+
+          {/* ── AI Complaint Summary (Bonus Feature #1) ── */}
+          {form.ai_complaint_summary && (
+            <div className="summary-card fade-in">
+              <div className="summary-header">
+                <span className="summary-icon">✦</span>
+                <span>AI Complaint Summary</span>
+              </div>
+              <p className="summary-text">{form.ai_complaint_summary}</p>
+            </div>
+          )}
         </section>
 
         {/* ── Completeness ── */}

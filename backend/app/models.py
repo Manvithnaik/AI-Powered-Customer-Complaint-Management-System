@@ -38,6 +38,7 @@ class Complaint(Base):
     # AI Copilot Analytics (using JSONB via SQLAlchemy JSON type on PostgreSQL)
     ai_completeness_check = Column(JSON, nullable=True)   # Audits of missing information (score, lists)
     ai_risk_rationale = Column(Text, nullable=True)        # Copilot rationale for severity / priority rating
+    ai_complaint_summary = Column(Text, nullable=True)     # Executive QA summary paragraph (Bonus Feature #1)
     ai_capa_rca = Column(JSON, nullable=True)              # Recommended CAPA list and RCA analysis (future phase)
     
     # Metadata

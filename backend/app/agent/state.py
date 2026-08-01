@@ -7,10 +7,11 @@ the full state and returns a partial dict of keys it modified.
 
 Flow:
   START
-    → extraction_node     (populates extracted_fields)
-    → validation_node     (populates validation_passed, validation_warnings)
-    → risk_assessment_node (populates initial_severity, priority, ai_risk_rationale)
-    → completeness_check_node (populates ai_completeness_check)
+    → extraction_node          (populates extracted_fields)
+    → validation_node          (populates validation_passed, validation_warnings)
+    → risk_assessment_node     (populates initial_severity, priority, ai_risk_rationale)
+    → completeness_check_node  (populates ai_completeness_check)
+    → summary_node             (populates ai_complaint_summary)
   END
 """
 
@@ -38,6 +39,9 @@ class ComplaintState(TypedDict):
 
     # ── Completeness Check Node Output ─────────────────
     ai_completeness_check: Optional[Dict[str, Any]]  # {score: int, missing_fields: list}
+
+    # ── Summary Node Output ────────────────────────────
+    ai_complaint_summary: Optional[str]              # Executive QA summary paragraph
 
     # ── Shared Error Accumulator ───────────────────────
     errors: List[str]                      # Any node can append errors here

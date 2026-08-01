@@ -55,6 +55,7 @@ const emptyForm = {
   initial_severity: '',
   priority: '',
   ai_risk_rationale: '',
+  ai_complaint_summary: '',
   status: 'Pending Triage',
 };
 
@@ -151,6 +152,7 @@ const complaintSlice = createSlice({
         initial_severity: data.initial_severity,
         priority: data.priority,
         ai_risk_rationale: data.ai_risk_rationale,
+        ai_complaint_summary: data.ai_complaint_summary,
       };
       Object.entries(fieldMap).forEach(([key, val]) => {
         // Explicitly write value, falling back to empty string to overwrite old values

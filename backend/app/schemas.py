@@ -33,6 +33,7 @@ class ComplaintBase(BaseModel):
     # AI Outputs
     ai_completeness_check: Optional[Dict[str, Any]] = None
     ai_risk_rationale: Optional[str] = None
+    ai_complaint_summary: Optional[str] = None
     ai_capa_rca: Optional[Dict[str, Any]] = None
 
 
@@ -64,6 +65,7 @@ class ComplaintUpdate(BaseModel):
     status: Optional[str] = None
     ai_completeness_check: Optional[Dict[str, Any]] = None
     ai_risk_rationale: Optional[str] = None
+    ai_complaint_summary: Optional[str] = None
     ai_capa_rca: Optional[Dict[str, Any]] = None
 
 
