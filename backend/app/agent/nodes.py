@@ -715,14 +715,23 @@ def rca_node(state: ComplaintState) -> dict:
 
     description = _val("detailed_description")
     product_name = _val("product_name")
+    complaint_type = _val("complaint_type")
+
+    # Build structured context for the LLM
+    context_parts = []
+    if product_name:
+        pstr = product_name
+        if _val("product_strength_grade"):
+            pstr += f" {_val('product_strength_grade')}"
         context_parts.append(f"Product: {pstr}")
-    if _val("complaint_type"):
-        context_parts.append(f"Complaint Type: {_val('complaint_type')}")
+    if complaint_type:
+        context_parts.append(f"Complaint Type: {complaint_type}")
     if _val("batch_lot_number"):
         context_parts.append(f"Batch/Lot: {_val('batch_lot_number')}")
     if _val("quantity_affected"):
         context_parts.append(f"Quantity Affected: {_val('quantity_affected')}")
-    context_parts.append(f"Observed Defect / Description: {description}")
+    if description:
+        context_parts.append(f"Observed Defect / Description: {description}")
     if state.get("initial_severity"):
         context_parts.append(
             f"Risk Classification: {state['initial_severity']} severity, "
