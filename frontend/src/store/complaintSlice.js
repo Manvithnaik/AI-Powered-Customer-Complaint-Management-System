@@ -170,7 +170,12 @@ const complaintSlice = createSlice({
       state.form.ai_duplicate_check = data.ai_duplicate_check ?? null;
       state.aiPopulatedFields = populated;
 
-      const severity = data.initial_severity || 'Unknown';
+      const riskLine = (data.initial_severity && data.priority)
+        ? `\n**Risk Assessment:** ${data.initial_severity} severity — ${data.priority} priority.`
+        : data.initial_severity
+        ? `\n**Risk Assessment:** ${data.initial_severity} severity.`
+        : '\n**Risk Assessment:** Pending Triage.';
+
       const rawScore = data.ai_completeness_check?.score;
       const score = rawScore != null ? rawScore : null;
       const level = data.ai_completeness_check?.completeness_level || '';
@@ -192,10 +197,10 @@ const complaintSlice = createSlice({
       state.chat.push({
         id: Date.now(),
         role: 'assistant',
-        content: `${intro}\n\n**Risk Assessment:** ${severity} severity — ${data.priority} priority.${completenessLine}\n\n${data.ai_risk_rationale || ''}`,
+        content: `${intro}\n${riskLine}${completenessLine}\n\n${data.ai_risk_rationale || ''}`,
         timestamp: Date.now(),
         isAnalysis: true,
-        severity,
+        severity: data.initial_severity || 'Major',
         score,
       });
     };

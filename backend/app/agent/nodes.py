@@ -374,9 +374,9 @@ def risk_assessment_node(state: ComplaintState) -> dict:
     except Exception as e:
         errors.append(f"RiskAssessmentNode error: {str(e)}")
         return {
-            "initial_severity": None,
-            "priority": None,
-            "ai_risk_rationale": None,
+            "initial_severity": "Major",
+            "priority": "High",
+            "ai_risk_rationale": "Initial risk assessment assigned as Major severity / High priority pending complete QA investigation.",
             "errors": errors,
         }
 
