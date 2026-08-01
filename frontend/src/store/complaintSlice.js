@@ -173,12 +173,16 @@ const complaintSlice = createSlice({
       const severity = data.initial_severity || 'Unknown';
       const rawScore = data.ai_completeness_check?.score;
       const score = rawScore != null ? rawScore : null;
-      const scoreDisplay = score != null ? `${score}/100` : 'N/A';
       const level = data.ai_completeness_check?.completeness_level || '';
       const missing = data.ai_completeness_check?.missing_fields || [];
       const missingStr = missing.length > 0
         ? ` Missing: ${missing.slice(0, 3).map(m => m.label).join(', ')}.`
-        : score != null ? ' All key fields captured.' : '';
+        : ' All key fields captured.';
+      
+      const completenessLine = score != null 
+        ? `\n**Completeness:** ${score}/100 (${level}).${missingStr}`
+        : '';
+
       // Determine if this was an update vs new by checking if description was preserved
       const isUpdate = !!(data.product_name && populated.length > 0 && populated.length < 8);
       const intro = isUpdate
@@ -188,7 +192,7 @@ const complaintSlice = createSlice({
       state.chat.push({
         id: Date.now(),
         role: 'assistant',
-        content: `${intro}\n\n**Risk Assessment:** ${severity} severity — ${data.priority} priority.\n**Completeness:** ${scoreDisplay} (${level}).${missingStr}\n\n${data.ai_risk_rationale || ''}`,
+        content: `${intro}\n\n**Risk Assessment:** ${severity} severity — ${data.priority} priority.${completenessLine}\n\n${data.ai_risk_rationale || ''}`,
         timestamp: Date.now(),
         isAnalysis: true,
         severity,
