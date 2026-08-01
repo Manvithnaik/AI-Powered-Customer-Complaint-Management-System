@@ -375,6 +375,55 @@ export default function ComplaintForm() {
               <p className="capa-disclaimer">⚠ {form.ai_capa_recommendation.disclaimer}</p>
             </div>
           )}
+
+          {/* ── AI Duplicate Complaint Detection (Bonus Feature #4) ── */}
+          {form.ai_duplicate_check && (
+            <div className={`duplicate-card fade-in ${form.ai_duplicate_check.duplicate_found ? 'has-duplicates' : 'no-duplicates'}`}>
+              <div className="duplicate-header">
+                <span className="duplicate-icon">✦</span>
+                <span>AI Duplicate Complaint Detection</span>
+                <span className={`duplicate-confidence-badge confidence-${(form.ai_duplicate_check.confidence || 'high').toLowerCase()}`}>
+                  {form.ai_duplicate_check.confidence || 'High'} Confidence
+                </span>
+              </div>
+
+              {form.ai_duplicate_check.duplicate_found && form.ai_duplicate_check.matches?.length > 0 ? (
+                <div className="duplicate-body">
+                  <div className="duplicate-alert-banner">
+                    <span className="alert-icon">⚠</span>
+                    <span>Potential Duplicate(s) Identified in Database</span>
+                  </div>
+
+                  <div className="duplicate-matches-list">
+                    {form.ai_duplicate_check.matches.map((m, idx) => (
+                      <div key={idx} className="duplicate-match-item">
+                        <div className="match-top-row">
+                          <span className="match-complaint-number">{m.complaint_number}</span>
+                          <span className="match-similarity-pill">{m.similarity}% Similarity</span>
+                        </div>
+                        {m.reasons?.length > 0 && (
+                          <div className="match-reasons">
+                            {m.reasons.map((r, rIdx) => (
+                              <span key={rIdx} className="reason-tag">✓ {r}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="duplicate-recommendation">
+                    <strong>Recommendation:</strong> {form.ai_duplicate_check.recommendation}
+                  </p>
+                </div>
+              ) : (
+                <div className="duplicate-clear-banner">
+                  <span className="clear-icon">✓</span>
+                  <span>No Similar Historical Complaints Found</span>
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* ── Completeness ── */}

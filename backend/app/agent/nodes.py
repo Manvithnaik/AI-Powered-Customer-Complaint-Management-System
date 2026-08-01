@@ -871,3 +871,196 @@ def capa_node(state: ComplaintState) -> dict:
         }
 
     return {"ai_capa_recommendation": capa, "errors": errors}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NODE 8 — AI Duplicate Complaint Detection
+#  Hybrid Duplicate Detection:
+#    1. PostgreSQL deterministic candidate search (top 10 by product/batch/type)
+#    2. AI similarity & reasoning on candidates
+# ─────────────────────────────────────────────────────────────────────────────
+
+DUPLICATE_SYSTEM_PROMPT = """You are a pharmaceutical Quality Assurance data analyst comparing a NEW incoming complaint against a set of HISTORICAL candidate complaints retrieved from the database.
+
+Your task is to calculate similarity percentage (0–100%) and determine if any historical complaints represent potential duplicates or related quality incidents.
+
+MATCHING CONFIDENCE GUIDELINES:
+- High Confidence match: Same Product + Same Batch + Very Similar physical defect (e.g. 85–100% similarity).
+- Medium Confidence match: Same Product + Similar defect + Different/Unknown Batch (e.g. 60–84% similarity).
+- Low Confidence match: Only similar wording or different products (e.g. <50% similarity — exclude from matches).
+
+AI RULES FOR MATCH REASONS:
+You MUST explain WHY complaints are similar using structured reason labels, such as:
+- "Same Product"
+- "Same Batch"
+- "Very Similar Defect"
+- "Same Packaging Issue"
+- "Same Physical Damage"
+- "Similar Customer Description"
+- "Same Reporter/Customer"
+
+OUTPUT FORMAT REQUIREMENT:
+Return ONLY a valid JSON object matching this exact structure (no markdown, no code blocks, no preamble):
+
+{
+  "duplicate_found": true,
+  "confidence": "High",
+  "recommendation": "Review existing investigation before creating a new complaint.",
+  "matches": [
+    {
+      "complaint_number": "CMP-2026-0007",
+      "similarity": 96,
+      "reasons": [
+        "Same Product",
+        "Same Batch",
+        "Very Similar Defect"
+      ]
+    }
+  ]
+}
+
+IF NO CANDIDATE MATCHES >= 55% SIMILARITY:
+Return:
+{
+  "duplicate_found": false,
+  "confidence": "High",
+  "recommendation": "No similar historical complaints were found.",
+  "matches": []
+}"""
+
+
+def duplicate_detection_node(state: ComplaintState) -> dict:
+    """
+    Perform hybrid duplicate complaint detection:
+      Step 1: Query PostgreSQL for up to 10 candidate complaints matching product, batch, or type.
+      Step 2: Use LLM to calculate similarity score, reasons, and recommendation.
+    Returns ai_duplicate_check dict.
+    """
+    errors = list(state.get("errors", []))
+    fields = state.get("extracted_fields", {})
+
+    def _val(key: str) -> str:
+        v = fields.get(key)
+        return str(v).strip() if v and str(v).strip().lower() not in ("", "null", "none") else ""
+
+    product_name = _val("product_name")
+    batch = _val("batch_lot_number")
+    c_type = _val("complaint_type")
+    description = _val("detailed_description")
+
+    # If product and description are missing, no duplicate check possible
+    if not product_name and not description:
+        return {
+            "ai_duplicate_check": {
+                "duplicate_found": False,
+                "confidence": "High",
+                "recommendation": "No similar historical complaints were found.",
+                "matches": [],
+            },
+            "errors": errors,
+        }
+
+    # ── STEP 1: Query PostgreSQL for Candidate Complaints (Limit 10) ────────
+    candidates = []
+    try:
+        from app.database import SessionLocal
+        from app.models import Complaint
+        from sqlalchemy import or_
+
+        db = SessionLocal()
+        try:
+            filters = []
+            if product_name:
+                filters.append(Complaint.product_name.ilike(f"%{product_name}%"))
+            if batch:
+                filters.append(Complaint.batch_lot_number.ilike(f"%{batch}%"))
+            if c_type:
+                filters.append(Complaint.complaint_type.ilike(f"%{c_type}%"))
+
+            query = db.query(Complaint)
+            if filters:
+                query = query.filter(or_(*filters))
+
+            # Fetch top 10 most recent candidates
+            db_records = query.order_by(Complaint.id.desc()).limit(10).all()
+
+            for rec in db_records:
+                candidates.append({
+                    "complaint_number": rec.complaint_number,
+                    "product_name": rec.product_name or "",
+                    "batch_lot_number": rec.batch_lot_number or "",
+                    "complaint_type": rec.complaint_type or "",
+                    "customer_name": rec.customer_name or "",
+                    "detailed_description": (rec.detailed_description or "")[:300],
+                })
+        finally:
+            db.close()
+    except Exception as exc:
+        errors.append(f"duplicate_detection DB candidate query error: {exc}")
+
+    # If no database candidates exist at all
+    if not candidates:
+        return {
+            "ai_duplicate_check": {
+                "duplicate_found": False,
+                "confidence": "High",
+                "recommendation": "No similar historical complaints were found.",
+                "matches": [],
+            },
+            "errors": errors,
+        }
+
+    # ── STEP 2: Pass Current Complaint + Candidates to LLM for Reasoning ────
+    current_info = (
+        f"Product: {product_name}\n"
+        f"Batch: {batch}\n"
+        f"Complaint Type: {c_type}\n"
+        f"Description: {description}"
+    )
+
+    candidates_text = json.dumps(candidates, indent=2)
+
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        api_key=GROQ_API_KEY,
+        temperature=0.1,
+        max_tokens=600,
+    )
+
+    try:
+        response = llm.invoke([
+            SystemMessage(content=DUPLICATE_SYSTEM_PROMPT),
+            HumanMessage(
+                content=(
+                    f"NEW INCOMING COMPLAINT:\n{current_info}\n\n"
+                    f"HISTORICAL CANDIDATE COMPLAINTS FROM DATABASE:\n{candidates_text}\n\n"
+                    "Analyze similarity and return the JSON output."
+                )
+            ),
+        ])
+        result = _parse_rca_json(response.content)
+
+        # Ensure required keys exist
+        if "duplicate_found" not in result:
+            result["duplicate_found"] = bool(result.get("matches"))
+        if "confidence" not in result:
+            result["confidence"] = "High"
+        if "matches" not in result:
+            result["matches"] = []
+        if "recommendation" not in result:
+            result["recommendation"] = (
+                "Review existing investigation before creating a new complaint."
+                if result["duplicate_found"]
+                else "No similar historical complaints were found."
+            )
+
+    except Exception as exc:
+        errors.append(f"duplicate_detection LLM error: {exc}")
+        result = {
+            "duplicate_found": False,
+            "confidence": "Low",
+            "recommendation": "Duplicate detection check could not be completed.",
+            "matches": [],
+        }
+
+    return {"ai_duplicate_check": result, "errors": errors}

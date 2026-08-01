@@ -1,16 +1,17 @@
 """
 LangGraph Complaint Processing Graph
 
-Wires the 7 nodes into a compiled StateGraph:
+Wires the 8 nodes into a compiled StateGraph:
 
   START
-    -> extraction_node        (Groq: llama-3.1-8b-instant)
-    -> validation_node        (Pure Python)
-    -> risk_assessment_node   (Groq: llama-3.3-70b-versatile)
-    -> completeness_check_node (Pure Python)
-    -> summary_node           (Groq: llama-3.1-8b-instant)
-    -> rca_node               (Groq: llama-3.3-70b-versatile)
-    -> capa_node              (Groq: llama-3.3-70b-versatile)
+    -> extraction_node          (Groq: llama-3.1-8b-instant)
+    -> validation_node          (Pure Python)
+    -> risk_assessment_node     (Groq: llama-3.3-70b-versatile)
+    -> completeness_check_node  (Pure Python)
+    -> summary_node             (Groq: llama-3.1-8b-instant)
+    -> rca_node                 (Groq: llama-3.3-70b-versatile)
+    -> capa_node                (Groq: llama-3.3-70b-versatile)
+    -> duplicate_detection_node (Groq: llama-3.1-8b-instant)
   END
 
 Usage:
@@ -42,6 +43,7 @@ from .nodes import (
     summary_node,
     rca_node,
     capa_node,
+    duplicate_detection_node,
 )
 
 
@@ -60,6 +62,7 @@ def build_complaint_graph():
     graph.add_node("summary", summary_node)
     graph.add_node("rca", rca_node)
     graph.add_node("capa", capa_node)
+    graph.add_node("duplicate_detection", duplicate_detection_node)
 
     # ── Define Linear Flow ────────────────────────────────────
     graph.set_entry_point("extraction")
@@ -69,7 +72,8 @@ def build_complaint_graph():
     graph.add_edge("completeness_check", "summary")
     graph.add_edge("summary", "rca")
     graph.add_edge("rca", "capa")
-    graph.add_edge("capa", END)
+    graph.add_edge("capa", "duplicate_detection")
+    graph.add_edge("duplicate_detection", END)
 
     return graph.compile()
 
@@ -102,6 +106,7 @@ def run_complaint_pipeline(raw_text: str, current_state: Optional[Dict[str, Any]
         "ai_complaint_summary": None,
         "ai_capa_rca": None,
         "ai_capa_recommendation": None,
+        "ai_duplicate_check": None,
         "errors": [],
     }
     return complaint_graph.invoke(initial_state)

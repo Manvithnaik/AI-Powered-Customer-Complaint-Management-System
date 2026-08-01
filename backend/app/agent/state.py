@@ -14,6 +14,7 @@ the full state and returns a partial dict of keys it modified.
       → summary_node             (populates ai_complaint_summary)
       → rca_node                 (populates ai_capa_rca)
       → capa_node                (populates ai_capa_recommendation)
+      → duplicate_detection_node (populates ai_duplicate_check)
     END
 """
 
@@ -50,6 +51,9 @@ class ComplaintState(TypedDict):
 
     # ── CAPA Recommendation Node Output ────────────────
     ai_capa_recommendation: Optional[Dict[str, Any]] # {confidence, corrective_actions[], preventive_actions[], disclaimer}
+
+    # ── Duplicate Detection Node Output ────────────────
+    ai_duplicate_check: Optional[Dict[str, Any]]     # {duplicate_found, confidence, recommendation, matches}
 
     # ── Shared Error Accumulator ───────────────────────
     errors: List[str]                      # Any node can append errors here

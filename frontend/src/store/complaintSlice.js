@@ -58,6 +58,7 @@ const emptyForm = {
   ai_complaint_summary: '',
   ai_capa_rca: null,
   ai_capa_recommendation: null,
+  ai_duplicate_check: null,
   status: 'Pending Triage',
 };
 
@@ -166,6 +167,7 @@ const complaintSlice = createSlice({
       state.form.ai_complaint_summary = data.ai_complaint_summary || '';
       state.form.ai_capa_rca = data.ai_capa_rca ?? null;
       state.form.ai_capa_recommendation = data.ai_capa_recommendation ?? null;
+      state.form.ai_duplicate_check = data.ai_duplicate_check ?? null;
       state.aiPopulatedFields = populated;
 
       // Build assistant response message — detect if this was a follow-up
