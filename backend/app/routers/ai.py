@@ -150,26 +150,6 @@ def check_db_fetch_intent(text: str, db: Session) -> Optional[AnalyzeResponse]:
         if is_fetch:
             record = crud.get_complaint_by_number(db=db, complaint_number=cmp_number)
             if record:
-                # ── BUG FIX ───────────────────────────────────────────────────────
-                # Previously used `record.ai_completeness_check or { score: 100 }`
-                # which silently replaced the real stored completeness data with a
-                # fake "100% complete" default whenever the value was falsy.
-                # The correct behaviour: return exactly what is stored in PostgreSQL.
-                # Only substitute a fallback sentinel when the column is genuinely NULL
-                # (i.e. the complaint predates the completeness feature).
-                # -----------------------------------------------------------------
-                if record.ai_completeness_check is not None:
-                    completeness = record.ai_completeness_check
-                else:
-                    # Column is NULL — complaint was saved before completeness was
-                    # calculated. Return a neutral sentinel so the UI knows data is
-                    # unavailable (not that the complaint is 100% complete).
-                    completeness = {
-                        "score": None,
-                        "missing_fields": [],
-                        "present_fields": [],
-                        "completeness_level": "Not Available"
-                    }
                 return AnalyzeResponse(
                     customer_name=record.customer_name,
                     complaint_source=record.complaint_source,
@@ -185,12 +165,13 @@ def check_db_fetch_intent(text: str, db: Session) -> Optional[AnalyzeResponse]:
                     initial_severity=record.initial_severity,
                     priority=record.priority,
                     ai_risk_rationale=record.ai_risk_rationale or f"Fetched from database record {cmp_number}.",
-                    ai_completeness_check=completeness,
+                    # Completeness and Duplicate Detection are only relevant during
+                    # new complaint analysis. For DB fetches, omit them so the
+                    # frontend hides those sections entirely.
+                    ai_completeness_check=None,
                     ai_complaint_summary=record.ai_complaint_summary,
                     ai_capa_rca=record.ai_capa_rca,
                     ai_capa_recommendation=record.ai_capa_recommendation,
-                    # Note: ai_duplicate_check is intentionally omitted here — duplicate
-                    # detection runs dynamically on incoming complaints and is not stored in DB.
                     ai_duplicate_check=None,
                     validation_passed=True,
                     validation_warnings=[],
@@ -202,12 +183,7 @@ def check_db_fetch_intent(text: str, db: Session) -> Optional[AnalyzeResponse]:
                     initial_severity="Minor",
                     priority="Low",
                     ai_risk_rationale=f"Complaint **{cmp_number}** was not found in the database. Please verify the complaint number.",
-                    ai_completeness_check={
-                        "score": 0,
-                        "missing_fields": [],
-                        "present_fields": [],
-                        "completeness_level": "Not Found"
-                    },
+                    ai_completeness_check=None,
                     validation_passed=False,
                     validation_warnings=[f"Record '{cmp_number}' does not exist."],
                     errors=[f"Complaint '{cmp_number}' not found."],
