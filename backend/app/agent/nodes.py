@@ -880,24 +880,34 @@ def capa_node(state: ComplaintState) -> dict:
 #    2. AI similarity & reasoning on candidates
 # ─────────────────────────────────────────────────────────────────────────────
 
-DUPLICATE_SYSTEM_PROMPT = """You are a pharmaceutical Quality Assurance data analyst comparing a NEW incoming complaint against a set of HISTORICAL candidate complaints retrieved from the database.
+DUPLICATE_SYSTEM_PROMPT = """You are a pharmaceutical Quality Assurance (QA) data analyst comparing a NEW incoming complaint against HISTORICAL candidate complaints from the database.
 
-Your task is to calculate similarity percentage (0–100%) and determine if any historical complaints represent potential duplicates or related quality incidents.
+SCORING HIERARCHY & WEIGHTS (Strict Priority Order):
+1. Same Batch Number (Highest Weight)
+2. Same Product Name & Strength
+3. Same Physical Defect (e.g. discoloration, dark spots, chipping, broken tablets, leakage)
+4. Same Complaint Category / Type
+5. Same Customer / Reporter
+(Lowest Weight: General similarity of text wording)
 
-MATCHING CONFIDENCE GUIDELINES:
-- High Confidence match: Same Product + Same Batch + Very Similar physical defect (e.g. 85–100% similarity).
-- Medium Confidence match: Same Product + Similar defect + Different/Unknown Batch (e.g. 60–84% similarity).
-- Low Confidence match: Only similar wording or different products (e.g. <50% similarity — exclude from matches).
+STRICT SIMILARITY SCORING RULES:
+- Same Batch + Same Product + Similar Physical Defect -> MUST score 90%–100% similarity (High Confidence match).
+- Same Product + Same Physical Defect + Different/Unknown Batch -> MUST score 65%–85% similarity (Medium Confidence match).
+- Same Product + Different Defect OR Different Product -> Score < 50% (Exclude from matches array).
 
-AI RULES FOR MATCH REASONS:
-You MUST explain WHY complaints are similar using structured reason labels, such as:
-- "Same Product"
+REASON EXPLANATION RULES:
+Always list explicit, high-evidence reason tags in order of strength.
+PREFER SPECIFIC TAGS:
 - "Same Batch"
-- "Very Similar Defect"
-- "Same Packaging Issue"
-- "Same Physical Damage"
-- "Similar Customer Description"
-- "Same Reporter/Customer"
+- "Same Product"
+- "Same Physical Defect" (or "Similar Physical Defect")
+- "Same Complaint Type"
+- "Same Customer"
+DO NOT output generic tags like "Similar Customer Description" or "Wording Similarity" when stronger evidence tags (Same Batch, Same Product, Same Physical Defect) exist.
+
+RECOMMENDATION WORDING:
+If duplicate matches are found, generate a clear, professional QA recommendation referencing the specific primary complaint number(s), for example:
+"A previous complaint has already been logged for the same product and batch. Review complaint CMP-2026-0001 before opening a new investigation to determine whether this report belongs to the existing quality event."
 
 OUTPUT FORMAT REQUIREMENT:
 Return ONLY a valid JSON object matching this exact structure (no markdown, no code blocks, no preamble):
@@ -905,15 +915,15 @@ Return ONLY a valid JSON object matching this exact structure (no markdown, no c
 {
   "duplicate_found": true,
   "confidence": "High",
-  "recommendation": "Review existing investigation before creating a new complaint.",
+  "recommendation": "A previous complaint has already been logged for the same product and batch. Review complaint CMP-2026-0001 before opening a new investigation to determine whether this report belongs to the existing quality event.",
   "matches": [
     {
-      "complaint_number": "CMP-2026-0007",
+      "complaint_number": "CMP-2026-0001",
       "similarity": 96,
       "reasons": [
-        "Same Product",
         "Same Batch",
-        "Very Similar Defect"
+        "Same Product",
+        "Similar Physical Defect"
       ]
     }
   ]
@@ -1021,7 +1031,7 @@ def duplicate_detection_node(state: ComplaintState) -> dict:
     candidates_text = json.dumps(candidates, indent=2)
 
     llm = ChatGroq(
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         api_key=GROQ_API_KEY,
         temperature=0.1,
         max_tokens=600,
