@@ -5,14 +5,15 @@ The ComplaintState TypedDict is the single source of truth that flows
 through every node in the complaint processing graph. Each node receives
 the full state and returns a partial dict of keys it modified.
 
-Flow:
-  START
-    → extraction_node          (populates extracted_fields)
-    → validation_node          (populates validation_passed, validation_warnings)
-    → risk_assessment_node     (populates initial_severity, priority, ai_risk_rationale)
-    → completeness_check_node  (populates ai_completeness_check)
-    → summary_node             (populates ai_complaint_summary)
-  END
+  Flow:
+    START
+      → extraction_node          (populates extracted_fields)
+      → validation_node          (populates validation_passed, validation_warnings)
+      → risk_assessment_node     (populates initial_severity, priority, ai_risk_rationale)
+      → completeness_check_node  (populates ai_completeness_check)
+      → summary_node             (populates ai_complaint_summary)
+      → rca_node                 (populates ai_capa_rca)
+    END
 """
 
 from typing import Any, Dict, List, Optional
@@ -42,6 +43,9 @@ class ComplaintState(TypedDict):
 
     # ── Summary Node Output ────────────────────────────
     ai_complaint_summary: Optional[str]              # Executive QA summary paragraph
+
+    # ── Root Cause Recommendation Node Output ──────────
+    ai_capa_rca: Optional[Dict[str, Any]]            # {confidence: str, possible_root_causes: list, disclaimer: str}
 
     # ── Shared Error Accumulator ───────────────────────
     errors: List[str]                      # Any node can append errors here

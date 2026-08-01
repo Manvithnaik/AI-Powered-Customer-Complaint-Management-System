@@ -567,3 +567,139 @@ def summary_node(state: ComplaintState) -> dict:
         summary = " ".join(parts) + "." if parts else "Summary unavailable."
 
     return {"ai_complaint_summary": summary, "errors": errors}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NODE 6 — Root Cause Recommendation (RCA)
+#  Generates 2–4 investigation hypotheses for QA engineers.
+#  Uses llama-3.3-70b-versatile for pharmaceutical domain reasoning.
+# ─────────────────────────────────────────────────────────────────────────────
+
+RCA_SYSTEM_PROMPT = """You are an expert pharmaceutical Quality Assurance (QA) and Root Cause Analysis (RCA) specialist.
+
+Your task is to generate 2 to 4 potential root cause investigation hypotheses to assist QA engineers starting a formal complaint investigation.
+
+CRITICAL RULES:
+1. NEVER state "The root cause is..." or claim a definitive cause.
+2. ALWAYS use tentative language: "possible", "potential", "may occur", "could be associated with", "likely requires investigation", "cannot be excluded".
+3. Reason from pharmaceutical manufacturing domain knowledge based on the observed defect and dosage form:
+   - Tablets: compression process variation, coating integrity failure, blister sealing mechanical stress, transportation vibration damage.
+   - Injectables/Sterile: container closure integrity breach, fill line particulate contamination, sterilizer cycle drift, vial stopper defect.
+   - Capsules: capsule shell moisture sensitivity, dosator filling variation, ambient humidity exposure during storage, gelatin instability.
+   - Packaging/Labelling: heat-seal temperature fluctuation, friction damage during cartoning, incorrect printing parameters, label adhesion failure.
+4. Base hypotheses ONLY on the physical defect and product information provided. Do NOT invent facts.
+5. Assign a confidence level: "High" (clear physical defect with obvious manufacturing linkage), "Medium" (defect present but cause uncertain), or "Low" (insufficient detail).
+6. Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks, no preamble):
+
+{
+  "confidence": "Medium",
+  "possible_root_causes": [
+    {
+      "cause": "Short title of investigation hypothesis",
+      "reason": "Technical rationale explaining how this process or material variation could cause the observed defect."
+    }
+  ],
+  "disclaimer": "These are AI-generated investigation hypotheses and are not confirmed root causes."
+}"""
+
+
+def _parse_rca_json(raw: str) -> Dict[str, Any]:
+    """Parse JSON from RCA LLM response, stripping markdown fences."""
+    cleaned = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise ValueError(f"No JSON found in RCA response: {raw}")
+    return json.loads(cleaned[start:end])
+
+
+def rca_node(state: ComplaintState) -> dict:
+    """
+    Generate potential root cause investigation hypotheses for QA engineers.
+    Runs after summary_node. Uses all available extracted fields + risk classification.
+    Returns ai_capa_rca as a structured JSON dict.
+    """
+    errors = list(state.get("errors", []))
+    fields = state.get("extracted_fields", {})
+
+    def _val(key: str) -> str:
+        v = fields.get(key)
+        return str(v).strip() if v and str(v).strip().lower() not in ("", "null", "none") else ""
+
+    description = _val("detailed_description")
+    product_name = _val("product_name")
+
+    # Insufficient data guard — need at least a description with substance
+    word_count = len(description.split()) if description else 0
+    if not description or word_count < 8:
+        return {
+            "ai_capa_rca": {
+                "confidence": "Low",
+                "possible_root_causes": [],
+                "disclaimer": "Unable to confidently recommend root causes because insufficient complaint information is available.",
+            },
+            "errors": errors,
+        }
+
+    # Build structured context for the LLM
+    context_parts = []
+    if product_name:
+        pstr = product_name
+        if _val("product_strength_grade"):
+            pstr += f" {_val('product_strength_grade')}"
+        context_parts.append(f"Product: {pstr}")
+    if _val("complaint_type"):
+        context_parts.append(f"Complaint Type: {_val('complaint_type')}")
+    if _val("batch_lot_number"):
+        context_parts.append(f"Batch/Lot: {_val('batch_lot_number')}")
+    if _val("quantity_affected"):
+        context_parts.append(f"Quantity Affected: {_val('quantity_affected')}")
+    context_parts.append(f"Observed Defect / Description: {description}")
+    if state.get("initial_severity"):
+        context_parts.append(
+            f"Risk Classification: {state['initial_severity']} severity, "
+            f"{state.get('priority', 'Unknown')} priority"
+        )
+
+    complaint_context = "\n".join(context_parts)
+
+    llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
+        api_key=GROQ_API_KEY,
+        temperature=0.3,
+        max_tokens=600,
+    )
+
+    try:
+        response = llm.invoke([
+            SystemMessage(content=RCA_SYSTEM_PROMPT),
+            HumanMessage(
+                content=(
+                    "Generate 2 to 4 potential root cause investigation hypotheses "
+                    "for the following pharmaceutical complaint:\n\n"
+                    f"{complaint_context}"
+                )
+            ),
+        ])
+        rca = _parse_rca_json(response.content)
+
+        # Enforce disclaimer — always overwrite to ensure consistent wording
+        rca["disclaimer"] = (
+            "These are AI-generated investigation hypotheses and are not confirmed root causes."
+        )
+
+        # Validate minimal structure
+        if "possible_root_causes" not in rca:
+            rca["possible_root_causes"] = []
+        if "confidence" not in rca:
+            rca["confidence"] = "Medium"
+
+    except Exception as exc:
+        errors.append(f"rca_node LLM error: {exc}")
+        rca = {
+            "confidence": "Low",
+            "possible_root_causes": [],
+            "disclaimer": "Root cause recommendation could not be generated. Please investigate manually.",
+        }
+
+    return {"ai_capa_rca": rca, "errors": errors}

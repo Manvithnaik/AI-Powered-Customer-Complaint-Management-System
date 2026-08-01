@@ -292,6 +292,38 @@ export default function ComplaintForm() {
               <p className="summary-text">{form.ai_complaint_summary}</p>
             </div>
           )}
+
+          {/* ── AI Root Cause Recommendation (Bonus Feature #2) ── */}
+          {form.ai_capa_rca && (
+            <div className="rca-card fade-in">
+              <div className="rca-header">
+                <span className="rca-icon">✦</span>
+                <span>AI Root Cause Recommendation</span>
+                <span className={`rca-confidence-badge confidence-${(form.ai_capa_rca.confidence || 'low').toLowerCase()}`}>
+                  {form.ai_capa_rca.confidence || 'Low'} Confidence
+                </span>
+              </div>
+
+              {form.ai_capa_rca.possible_root_causes?.length > 0 ? (
+                <ul className="rca-list">
+                  {form.ai_capa_rca.possible_root_causes.map((item, idx) => (
+                    <li key={idx} className="rca-item">
+                      <span className="rca-cause">{item.cause}</span>
+                      <span className="rca-reason">{item.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="rca-insufficient">
+                  {form.ai_capa_rca.disclaimer || 'Insufficient data to generate root cause recommendations.'}
+                </p>
+              )}
+
+              {form.ai_capa_rca.possible_root_causes?.length > 0 && (
+                <p className="rca-disclaimer">⚠ {form.ai_capa_rca.disclaimer}</p>
+              )}
+            </div>
+          )}
         </section>
 
         {/* ── Completeness ── */}
