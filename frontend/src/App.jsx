@@ -1,6 +1,7 @@
 import Header from './components/Header';
 import ComplaintForm from './components/ComplaintForm';
 import AiCopilot from './components/AiCopilot';
+import ToastContainer from './components/Toast';
 import './App.css';
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
         <ComplaintForm />
         <AiCopilot />
       </main>
+      <ToastContainer />
     </div>
   );
 }

@@ -35,14 +35,47 @@ function ChatMessage({ msg }) {
   );
 }
 
-function TypingIndicator() {
+function ProgressiveLoadingIndicator() {
+  const stages = [
+    'Extracting Complaint Details',
+    'Running Risk Assessment',
+    'Generating Executive Summary',
+    'Root Cause Analysis (RCA)',
+    'CAPA Action Recommendation',
+    'Duplicate Complaint Detection',
+  ];
+  const [currentStage, setCurrentStage] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentStage((prev) => (prev < stages.length - 1 ? prev + 1 : prev));
+    }, 700);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div className="chat-msg chat-msg-ai fade-in">
       <div className="chat-avatar avatar-ai">✦</div>
-      <div className="chat-bubble bubble-ai typing-bubble">
-        <span className="typing-dot" />
-        <span className="typing-dot" />
-        <span className="typing-dot" />
+      <div className="chat-bubble bubble-ai processing-bubble">
+        <div className="processing-header">
+          <span className="spinner-sm" />
+          <span className="processing-title">Analyzing Complaint...</span>
+        </div>
+        <div className="processing-stages-list">
+          {stages.map((stage, idx) => {
+            const isDone = idx < currentStage;
+            const isCurrent = idx === currentStage;
+            return (
+              <div
+                key={stage}
+                className={`stage-item ${isDone ? 'stage-done' : isCurrent ? 'stage-current' : 'stage-pending'}`}
+              >
+                <span className="stage-icon">{isDone ? '✓' : isCurrent ? '⚡' : '○'}</span>
+                <span className="stage-text">{stage}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -136,7 +169,7 @@ export default function AiCopilot() {
         {chat.map(msg => (
           <ChatMessage key={msg.id} msg={msg} />
         ))}
-        {isLoading && <TypingIndicator />}
+        {isLoading && <ProgressiveLoadingIndicator />}
         <div ref={chatEndRef} />
       </div>
 

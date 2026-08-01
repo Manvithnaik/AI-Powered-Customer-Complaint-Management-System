@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { updateField, resetForm, submitComplaint, clearAiHighlight } from '../store/complaintSlice';
 import './ComplaintForm.css';
 
@@ -59,6 +59,9 @@ export default function ComplaintForm() {
   const completeness = useSelector(s => s.complaint.analysis.completeness);
   const prevPopulated = useRef([]);
 
+  // Default mode is Read-Only to protect AI-populated data
+  const [isEditing, setIsEditing] = useState(false);
+
   const set = (field) => (e) => dispatch(updateField({ field, value: e.target.value }));
 
   // Clear AI highlight after animation completes
@@ -80,7 +83,10 @@ export default function ComplaintForm() {
     dispatch(submitComplaint(form));
   };
 
-  const handleReset = () => dispatch(resetForm());
+  const handleReset = () => {
+    dispatch(resetForm());
+    setIsEditing(false);
+  };
 
   const severityColor = {
     Critical: 'severity-critical',
@@ -96,7 +102,39 @@ export default function ComplaintForm() {
 
   return (
     <div className="complaint-form-panel">
+      {/* ── Form Top Action Bar (Mode Indicator & Edit Toggle) ── */}
+      <div className="form-header-bar">
+        <div className="form-mode-container">
+          {isEditing ? (
+            <span className="mode-badge mode-editing">
+              <span className="mode-dot editing-dot" /> Manual Editing
+            </span>
+          ) : (
+            <span className="mode-badge mode-readonly">
+              <span className="mode-dot readonly-dot" /> AI Generated
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          className={`btn-toggle-edit ${isEditing ? 'is-editing' : ''}`}
+          onClick={() => setIsEditing(!isEditing)}
+        >
+          {isEditing ? '✓ Save Changes' : '✏ Edit Complaint'}
+        </button>
+      </div>
+
       <div className="form-scroll">
+        {/* ── Edit Mode Informational Banner ── */}
+        {isEditing && (
+          <div className="edit-mode-banner fade-in">
+            <span className="banner-icon">💡</span>
+            <span>
+              You are now editing AI-generated data. Your manual changes will override the AI extraction.
+            </span>
+          </div>
+        )}
+
         {/* ── Section 1: Origin ── */}
         <section className="form-section fade-in-up">
           <SectionHeader number="1" title="Origin &amp; Customer Details" />
@@ -106,6 +144,7 @@ export default function ComplaintForm() {
                 id="complaint_source"
                 value={form.complaint_source}
                 onChange={set('complaint_source')}
+                disabled={!isEditing}
                 className={isAiField('complaint_source') ? 'field-ai-populated' : ''}
               >
                 <option value="">Select source…</option>
@@ -119,6 +158,7 @@ export default function ComplaintForm() {
                 placeholder="e.g. Apollo Pharmacy"
                 value={form.customer_name}
                 onChange={set('customer_name')}
+                disabled={!isEditing}
                 className={isAiField('customer_name') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -136,6 +176,7 @@ export default function ComplaintForm() {
                 placeholder="e.g. Amoxicillin Capsules"
                 value={form.product_name}
                 onChange={set('product_name')}
+                disabled={!isEditing}
                 className={isAiField('product_name') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -146,6 +187,7 @@ export default function ComplaintForm() {
                 placeholder="e.g. 500 mg / USP Grade"
                 value={form.product_strength_grade}
                 onChange={set('product_strength_grade')}
+                disabled={!isEditing}
                 className={isAiField('product_strength_grade') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -158,6 +200,7 @@ export default function ComplaintForm() {
                 placeholder="e.g. AMX240602"
                 value={form.batch_lot_number}
                 onChange={set('batch_lot_number')}
+                disabled={!isEditing}
                 className={isAiField('batch_lot_number') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -168,6 +211,7 @@ export default function ComplaintForm() {
                 placeholder="e.g. 12 capsules / 50 kg"
                 value={form.quantity_affected}
                 onChange={set('quantity_affected')}
+                disabled={!isEditing}
                 className={isAiField('quantity_affected') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -179,6 +223,7 @@ export default function ComplaintForm() {
                 type="date"
                 value={form.manufacturing_date}
                 onChange={set('manufacturing_date')}
+                disabled={!isEditing}
                 className={isAiField('manufacturing_date') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -188,6 +233,7 @@ export default function ComplaintForm() {
                 type="date"
                 value={form.expiry_date}
                 onChange={set('expiry_date')}
+                disabled={!isEditing}
                 className={isAiField('expiry_date') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -203,6 +249,7 @@ export default function ComplaintForm() {
                 id="complaint_type"
                 value={form.complaint_type}
                 onChange={set('complaint_type')}
+                disabled={!isEditing}
                 className={isAiField('complaint_type') ? 'field-ai-populated' : ''}
               >
                 <option value="">Select type…</option>
@@ -215,6 +262,7 @@ export default function ComplaintForm() {
                 type="date"
                 value={form.complaint_date}
                 onChange={set('complaint_date')}
+                disabled={!isEditing}
                 className={isAiField('complaint_date') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -227,6 +275,7 @@ export default function ComplaintForm() {
                 placeholder="Describe the complaint in detail…"
                 value={form.detailed_description}
                 onChange={set('detailed_description')}
+                disabled={!isEditing}
                 className={isAiField('detailed_description') ? 'field-ai-populated' : ''}
               />
             </FormField>
@@ -237,12 +286,13 @@ export default function ComplaintForm() {
         <section className="form-section fade-in-up" style={{ animationDelay: '180ms' }}>
           <SectionHeader number="4" title="AI Risk Assessment" />
           <FieldRow>
-            <FormField label="Initial Severity" id="initial_severity">
+            <FormField label="Initial Severity (AI Output)" id="initial_severity">
               <div className="severity-field-wrapper">
                 <select
                   id="initial_severity"
                   value={form.initial_severity}
                   onChange={set('initial_severity')}
+                  disabled={true}
                   className={`severity-select ${severityColor} ${isAiField('initial_severity') ? 'field-ai-populated' : ''}`}
                 >
                   <option value="">—</option>
@@ -253,11 +303,12 @@ export default function ComplaintForm() {
                 )}
               </div>
             </FormField>
-            <FormField label="Priority" id="priority">
+            <FormField label="Priority (AI Output)" id="priority">
               <select
                 id="priority"
                 value={form.priority}
                 onChange={set('priority')}
+                disabled={true}
                 className={`${isAiField('priority') ? 'field-ai-populated' : ''}`}
               >
                 <option value="">—</option>
@@ -267,7 +318,7 @@ export default function ComplaintForm() {
           </FieldRow>
           <FieldRow>
             <FormField label="Record Status" id="status">
-              <select id="status" value={form.status} onChange={set('status')}>
+              <select id="status" value={form.status} onChange={set('status')} disabled={!isEditing}>
                 {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </FormField>
@@ -471,14 +522,19 @@ export default function ComplaintForm() {
             </div>
           )}
           <div className="action-buttons">
-            <button id="reset-btn" className="btn-ghost" onClick={handleReset}>
+            <button
+              id="reset-btn"
+              className="btn-danger-ghost"
+              onClick={handleReset}
+              disabled={analysisStatus === 'loading' || saveStatus === 'loading'}
+            >
               ↺ Reset
             </button>
             <button
               id="save-btn"
               className="btn-primary"
               onClick={handleSave}
-              disabled={saveStatus === 'loading' || !form.product_name}
+              disabled={saveStatus === 'loading' || analysisStatus === 'loading' || !form.product_name}
             >
               {saveStatus === 'loading' ? (
                 <><div className="spinner" /> Saving…</>
