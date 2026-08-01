@@ -467,24 +467,24 @@ def completeness_check_node(state: ComplaintState) -> dict:
 #  Uses llama-3.1-8b-instant (fast, sufficient for summarisation).
 # ─────────────────────────────────────────────────────────────────────────────
 
-SUMMARY_SYSTEM_PROMPT = """You are a pharmaceutical Quality Assurance specialist writing a complaint summary for a QA reviewer.
+SUMMARY_SYSTEM_PROMPT = """You are a pharmaceutical Quality Assurance (QA) executive writing a high-level complaint summary for QA management and reviewers.
 
-Generate a single concise paragraph (60–120 words) that gives a QA engineer an immediate understanding of the complaint.
+Generate a professional, executive-style summary paragraph (60–120 words) that follows this logical flow:
 
-Include the following elements ONLY if the information is present in the complaint data provided:
-• Customer / reporter name
-• Product name, strength, and batch/lot number
-• Nature of the defect or issue (exactly as described — do not interpret or diagnose)
-• Quantity affected
-• Patient or end-user impact (only if explicitly mentioned)
-• Current risk classification (severity and priority)
+1. Customer / Reporting entity (e.g., "Central Medical Stores reported...")
+2. Product name and strength
+3. Batch / Lot number (e.g., "Batch CIP-260901")
+4. Actual observed physical defect or issue — ALWAYS use the specific physical defect mentioned in the text (e.g., "visible edge chipping", "broken tablets", "powder leakage", "dark brown spots", "foreign particles"). DO NOT use generic category names like "Product Appearance / Discoloration" or "Packaging Defect".
+5. Quantity affected (if provided)
+6. Patient exposure & quarantine status (if mentioned in the text)
+7. Final risk classification statement (e.g., "Based on the available information, the complaint has been initially classified as Major severity with Medium priority.")
 
 STRICT RULES:
-- Do NOT invent or infer any information not present in the data.
-- If a field is missing or null, simply omit it from the summary.
-- Do NOT use bullet points. Write a single flowing paragraph.
-- Do NOT include headings, labels, or any text before or after the paragraph.
-- Return ONLY the summary paragraph text. No markdown. No preamble."""
+- ALWAYS include the complete narrative including patient impact, quarantine status, and final risk classification (severity and priority).
+- DO NOT invent, assume, or extrapolate any facts. Omit missing details naturally.
+- Use actual observed defect details from the complaint description.
+- Write as a single, cohesive, professional executive paragraph (60–120 words).
+- DO NOT use bullet points, markdown headings, bold labels, or preamble text. Return ONLY the paragraph text."""
 
 
 def summary_node(state: ComplaintState) -> dict:
@@ -513,12 +513,10 @@ def summary_node(state: ComplaintState) -> dict:
         context_parts.append(f"Batch/Lot: {_val('batch_lot_number')}")
     if _val("quantity_affected"):
         context_parts.append(f"Quantity Affected: {_val('quantity_affected')}")
-    if _val("complaint_type"):
-        context_parts.append(f"Complaint Type: {_val('complaint_type')}")
     if _val("detailed_description"):
-        context_parts.append(f"Complaint Description: {_val('detailed_description')}")
+        context_parts.append(f"Observed Defect / Complaint Details: {_val('detailed_description')}")
     if state.get("initial_severity"):
-        context_parts.append(f"Risk Classification: {state['initial_severity']} severity, {state.get('priority', 'Unknown')} priority")
+        context_parts.append(f"Assigned Risk: {state['initial_severity']} severity, {state.get('priority', 'Unknown')} priority")
 
     if not context_parts:
         return {
@@ -531,19 +529,19 @@ def summary_node(state: ComplaintState) -> dict:
     llm = ChatGroq(
         model="llama-3.1-8b-instant",
         api_key=GROQ_API_KEY,
-        temperature=0.3,
-        max_tokens=200,
+        temperature=0.2,
+        max_tokens=350,
     )
 
     try:
         response = llm.invoke([
             SystemMessage(content=SUMMARY_SYSTEM_PROMPT),
-            HumanMessage(content=f"Generate the QA complaint summary for the following complaint:\n\n{complaint_context}"),
+            HumanMessage(content=f"Generate the executive QA complaint summary for the following complaint details:\n\n{complaint_context}"),
         ])
         summary = response.content.strip()
-        # Safety: clamp to avoid runaway responses
-        if len(summary) > 800:
-            summary = summary[:800].rsplit(" ", 1)[0] + "…"
+        # Safety: clamp only if excessively long
+        if len(summary) > 1000:
+            summary = summary[:1000].rsplit(" ", 1)[0] + "…"
     except Exception as exc:
         # Graceful fallback: build a minimal templated summary without LLM
         errors.append(f"summary_node LLM error: {exc}")
