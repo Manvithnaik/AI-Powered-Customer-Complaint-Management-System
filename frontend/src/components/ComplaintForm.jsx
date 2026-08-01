@@ -324,6 +324,57 @@ export default function ComplaintForm() {
               )}
             </div>
           )}
+
+          {/* ── AI CAPA Recommendation (Bonus Feature #3) ── */}
+          {form.ai_capa_recommendation && (
+            <div className="capa-card fade-in">
+              <div className="capa-header">
+                <span className="capa-icon">✦</span>
+                <span>AI CAPA Recommendation</span>
+                <span className={`capa-confidence-badge confidence-${(form.ai_capa_recommendation.confidence || 'low').toLowerCase()}`}>
+                  {form.ai_capa_recommendation.confidence || 'Low'} Confidence
+                </span>
+              </div>
+
+              <div className="capa-sections">
+                {/* Corrective Actions */}
+                <div className="capa-group">
+                  <h4 className="capa-subtitle">Corrective Actions (Immediate Response)</h4>
+                  {form.ai_capa_recommendation.corrective_actions?.length > 0 ? (
+                    <ul className="capa-list">
+                      {form.ai_capa_recommendation.corrective_actions.map((act, idx) => (
+                        <li key={idx} className="capa-item item-corrective">
+                          <span className="capa-bullet">•</span>
+                          <span className="capa-text">{act}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="capa-empty-text">No immediate corrective actions identified.</p>
+                  )}
+                </div>
+
+                {/* Preventive Actions */}
+                <div className="capa-group">
+                  <h4 className="capa-subtitle">Preventive Actions (Avoid Recurrence)</h4>
+                  {form.ai_capa_recommendation.preventive_actions?.length > 0 ? (
+                    <ul className="capa-list">
+                      {form.ai_capa_recommendation.preventive_actions.map((act, idx) => (
+                        <li key={idx} className="capa-item item-preventive">
+                          <span className="capa-bullet">•</span>
+                          <span className="capa-text">{act}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="capa-empty-text">No preventive actions identified.</p>
+                  )}
+                </div>
+              </div>
+
+              <p className="capa-disclaimer">⚠ {form.ai_capa_recommendation.disclaimer}</p>
+            </div>
+          )}
         </section>
 
         {/* ── Completeness ── */}

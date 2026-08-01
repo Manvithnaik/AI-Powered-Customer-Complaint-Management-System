@@ -39,7 +39,8 @@ class Complaint(Base):
     ai_completeness_check = Column(JSON, nullable=True)   # Audits of missing information (score, lists)
     ai_risk_rationale = Column(Text, nullable=True)        # Copilot rationale for severity / priority rating
     ai_complaint_summary = Column(Text, nullable=True)     # Executive QA summary paragraph (Bonus Feature #1)
-    ai_capa_rca = Column(JSON, nullable=True)              # Recommended CAPA list and RCA analysis (future phase)
+    ai_capa_rca = Column(JSON, nullable=True)              # Root cause investigation hypotheses (Bonus Feature #2)
+    ai_capa_recommendation = Column(JSON, nullable=True)   # CAPA corrective/preventive actions (Bonus Feature #3)
     
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())

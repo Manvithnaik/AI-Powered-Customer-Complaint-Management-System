@@ -241,6 +241,124 @@
   line-height: 1.5;
 }
 
+/* ── AI CAPA Recommendation Card (Bonus Feature #3) ── */
+.capa-card {
+  background: rgba(56, 189, 248, 0.06);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.capa-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.capa-icon { font-size: 0.85rem; }
+
+.capa-confidence-badge {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.capa-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 768px) {
+  .capa-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
+.capa-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.35);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(56, 189, 248, 0.12);
+}
+
+.capa-subtitle {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 4px 0;
+}
+
+.capa-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.capa-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.81rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.capa-bullet {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.item-corrective .capa-bullet {
+  color: #f87171; /* gentle red bullet for corrective */
+}
+
+.item-preventive .capa-bullet {
+  color: #4ade80; /* gentle green bullet for preventive */
+}
+
+.capa-text {
+  flex: 1;
+}
+
+.capa-empty-text {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0;
+}
+
+.capa-disclaimer {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  padding: 8px 10px;
+  background: rgba(100, 116, 139, 0.08);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(100, 116, 139, 0.15);
+  line-height: 1.5;
+  margin: 0;
+}
+
 /* ── Completeness Bar ── */
 .completeness-bar-wrapper {
   background: var(--bg-panel);

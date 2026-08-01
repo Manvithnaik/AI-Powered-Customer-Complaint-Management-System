@@ -71,6 +71,7 @@ class AnalyzeResponse(BaseModel):
     ai_completeness_check: Optional[Dict[str, Any]] = None
     ai_complaint_summary: Optional[str] = None  # Executive QA summary (Bonus #1)
     ai_capa_rca: Optional[Dict[str, Any]] = None  # Root cause hypotheses (Bonus #2)
+    ai_capa_recommendation: Optional[Dict[str, Any]] = None  # CAPA actions (Bonus #3)
 
     # ── Validation ────────────────────────────────────────
     validation_passed: bool = True
@@ -120,6 +121,7 @@ def _build_analyze_response(raw_text: str, current_state: Optional[Dict[str, Any
         ai_completeness_check=result.get("ai_completeness_check"),
         ai_complaint_summary=result.get("ai_complaint_summary"),
         ai_capa_rca=result.get("ai_capa_rca"),
+        ai_capa_recommendation=result.get("ai_capa_recommendation"),
 
         # ── Validation ───────────────────────────────────
         validation_passed=result.get("validation_passed", True),
@@ -173,6 +175,7 @@ def check_db_fetch_intent(text: str, db: Session) -> Optional[AnalyzeResponse]:
                     ai_completeness_check=completeness,
                     ai_complaint_summary=record.ai_complaint_summary,
                     ai_capa_rca=record.ai_capa_rca,
+                    ai_capa_recommendation=record.ai_capa_recommendation,
                     validation_passed=True,
                     validation_warnings=[],
                     errors=[],

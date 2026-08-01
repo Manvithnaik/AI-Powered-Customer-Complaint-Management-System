@@ -13,6 +13,7 @@ the full state and returns a partial dict of keys it modified.
       → completeness_check_node  (populates ai_completeness_check)
       → summary_node             (populates ai_complaint_summary)
       → rca_node                 (populates ai_capa_rca)
+      → capa_node                (populates ai_capa_recommendation)
     END
 """
 
@@ -46,6 +47,9 @@ class ComplaintState(TypedDict):
 
     # ── Root Cause Recommendation Node Output ──────────
     ai_capa_rca: Optional[Dict[str, Any]]            # {confidence: str, possible_root_causes: list, disclaimer: str}
+
+    # ── CAPA Recommendation Node Output ────────────────
+    ai_capa_recommendation: Optional[Dict[str, Any]] # {confidence, corrective_actions[], preventive_actions[], disclaimer}
 
     # ── Shared Error Accumulator ───────────────────────
     errors: List[str]                      # Any node can append errors here

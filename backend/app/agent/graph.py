@@ -1,7 +1,7 @@
 """
 LangGraph Complaint Processing Graph
 
-Wires the 6 nodes into a compiled StateGraph:
+Wires the 7 nodes into a compiled StateGraph:
 
   START
     -> extraction_node        (Groq: llama-3.1-8b-instant)
@@ -10,6 +10,7 @@ Wires the 6 nodes into a compiled StateGraph:
     -> completeness_check_node (Pure Python)
     -> summary_node           (Groq: llama-3.1-8b-instant)
     -> rca_node               (Groq: llama-3.3-70b-versatile)
+    -> capa_node              (Groq: llama-3.3-70b-versatile)
   END
 
 Usage:
@@ -40,6 +41,7 @@ from .nodes import (
     completeness_check_node,
     summary_node,
     rca_node,
+    capa_node,
 )
 
 
@@ -57,6 +59,7 @@ def build_complaint_graph():
     graph.add_node("completeness_check", completeness_check_node)
     graph.add_node("summary", summary_node)
     graph.add_node("rca", rca_node)
+    graph.add_node("capa", capa_node)
 
     # ── Define Linear Flow ────────────────────────────────────
     graph.set_entry_point("extraction")
@@ -65,7 +68,8 @@ def build_complaint_graph():
     graph.add_edge("risk_assessment", "completeness_check")
     graph.add_edge("completeness_check", "summary")
     graph.add_edge("summary", "rca")
-    graph.add_edge("rca", END)
+    graph.add_edge("rca", "capa")
+    graph.add_edge("capa", END)
 
     return graph.compile()
 
@@ -97,6 +101,7 @@ def run_complaint_pipeline(raw_text: str, current_state: Optional[Dict[str, Any]
         "ai_completeness_check": None,
         "ai_complaint_summary": None,
         "ai_capa_rca": None,
+        "ai_capa_recommendation": None,
         "errors": [],
     }
     return complaint_graph.invoke(initial_state)

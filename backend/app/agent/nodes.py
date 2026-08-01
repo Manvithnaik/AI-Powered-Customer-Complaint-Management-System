@@ -703,3 +703,171 @@ def rca_node(state: ComplaintState) -> dict:
         }
 
     return {"ai_capa_rca": rca, "errors": errors}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NODE 7 — CAPA Recommendation
+#  Generates corrective and preventive action recommendations for QA engineers.
+#  Uses the RCA output from rca_node to produce logically-linked actions.
+#  Uses llama-3.3-70b-versatile for pharmaceutical QA reasoning.
+# ─────────────────────────────────────────────────────────────────────────────
+
+CAPA_SYSTEM_PROMPT = """You are a senior pharmaceutical Quality Assurance (QA) engineer specialising in Corrective and Preventive Actions (CAPA).
+
+Your task is to generate practical CAPA recommendations for a QA team investigating a customer complaint.
+
+INPUTS YOU WILL RECEIVE:
+- Complaint details (product, description, severity, priority)
+- Possible root causes identified by a previous AI analysis (use these to drive your CAPA logic)
+
+OUTPUT REQUIREMENTS:
+Generate a JSON object with this exact structure:
+
+{
+  "confidence": "Medium",
+  "corrective_actions": [
+    "Suggested corrective action 1",
+    "Suggested corrective action 2"
+  ],
+  "preventive_actions": [
+    "Suggested preventive action 1",
+    "Suggested preventive action 2"
+  ],
+  "disclaimer": "These are AI-generated CAPA recommendations intended to support QA investigations and are not approved quality actions."
+}
+
+CORRECTIVE ACTIONS — immediate response to this specific complaint:
+- Quarantine affected inventory if not already done
+- Investigate batch records and manufacturing documentation
+- Inspect retained samples from the affected batch
+- Perform laboratory investigation (analytical, microbiological as appropriate)
+- Notify relevant QA and operations teams
+- Conduct customer/field notification if patient safety is at risk
+
+PREVENTIVE ACTIONS — steps to avoid recurrence:
+- Review and update relevant Standard Operating Procedures (SOPs)
+- Recalibrate or re-qualify equipment involved in the suspected process
+- Increase frequency of in-process testing or inspection
+- Improve packaging or storage controls
+- Review and enhance operator training programs
+- Implement additional process monitoring or trend analysis
+
+CRITICAL RULES:
+1. Generate 3–5 corrective actions and 3–5 preventive actions.
+2. Base actions DIRECTLY on the possible root causes provided — each major root cause should map to at least one corrective and one preventive action.
+3. NEVER use mandatory language ("must", "shall", "you must", "the company should"). Use: "suggested", "recommended", "may be considered", "potential action".
+4. Do NOT repeat the same action twice. Keep each action specific and practical.
+5. Do NOT hallucinate regulatory requirements not mentioned in the complaint.
+6. Assign confidence: "High" (clear defect + strong RCA), "Medium" (defect present, cause uncertain), "Low" (insufficient data).
+7. Return ONLY the JSON object. No markdown, no code blocks, no preamble or explanation."""
+
+
+def capa_node(state: ComplaintState) -> dict:
+    """
+    Generate CAPA recommendations based on complaint details and RCA output.
+    Runs after rca_node. Reads ai_capa_rca from state to drive logically-linked actions.
+    Returns ai_capa_recommendation as a structured JSON dict.
+    """
+    errors = list(state.get("errors", []))
+    fields = state.get("extracted_fields", {})
+    rca = state.get("ai_capa_rca") or {}
+
+    def _val(key: str) -> str:
+        v = fields.get(key)
+        return str(v).strip() if v and str(v).strip().lower() not in ("", "null", "none") else ""
+
+    description = _val("detailed_description")
+    possible_causes = rca.get("possible_root_causes", [])
+
+    # Insufficient data guard — need at least a description or RCA causes
+    if not description and not possible_causes:
+        return {
+            "ai_capa_recommendation": {
+                "confidence": "Low",
+                "corrective_actions": [],
+                "preventive_actions": [],
+                "disclaimer": "Unable to generate CAPA recommendations because insufficient complaint information is available.",
+            },
+            "errors": errors,
+        }
+
+    # Build structured context for the LLM
+    context_parts = []
+
+    if _val("product_name"):
+        pstr = _val("product_name")
+        if _val("product_strength_grade"):
+            pstr += f" {_val('product_strength_grade')}"
+        context_parts.append(f"Product: {pstr}")
+
+    if _val("complaint_type"):
+        context_parts.append(f"Complaint Type: {_val('complaint_type')}")
+
+    if _val("batch_lot_number"):
+        context_parts.append(f"Batch/Lot: {_val('batch_lot_number')}")
+
+    if _val("quantity_affected"):
+        context_parts.append(f"Quantity Affected: {_val('quantity_affected')}")
+
+    if description:
+        context_parts.append(f"Observed Defect / Description: {description}")
+
+    if state.get("initial_severity"):
+        context_parts.append(
+            f"Risk Classification: {state['initial_severity']} severity, "
+            f"{state.get('priority', 'Unknown')} priority"
+        )
+
+    if possible_causes:
+        causes_text = "\n".join(
+            f"  - {c.get('cause', '')}: {c.get('reason', '')}"
+            for c in possible_causes
+        )
+        context_parts.append(f"Possible Root Causes (from prior AI analysis):\n{causes_text}")
+
+    complaint_context = "\n".join(context_parts)
+
+    llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
+        api_key=GROQ_API_KEY,
+        temperature=0.2,
+        max_tokens=700,
+    )
+
+    try:
+        response = llm.invoke([
+            SystemMessage(content=CAPA_SYSTEM_PROMPT),
+            HumanMessage(
+                content=(
+                    "Generate CAPA recommendations for the following pharmaceutical complaint. "
+                    "Use the possible root causes to drive both corrective and preventive actions:\n\n"
+                    f"{complaint_context}"
+                )
+            ),
+        ])
+        capa = _parse_rca_json(response.content)  # reuse same JSON extractor
+
+        # Enforce disclaimer — always overwrite for consistent wording
+        capa["disclaimer"] = (
+            "These are AI-generated CAPA recommendations intended to support QA investigations "
+            "and are not approved quality actions."
+        )
+
+        # Validate structure
+        if "corrective_actions" not in capa:
+            capa["corrective_actions"] = []
+        if "preventive_actions" not in capa:
+            capa["preventive_actions"] = []
+        if "confidence" not in capa:
+            capa["confidence"] = "Medium"
+
+    except Exception as exc:
+        errors.append(f"capa_node LLM error: {exc}")
+        capa = {
+            "confidence": "Low",
+            "corrective_actions": [],
+            "preventive_actions": [],
+            "disclaimer": "CAPA recommendations could not be generated. Please consult your QA team.",
+        }
+
+    return {"ai_capa_recommendation": capa, "errors": errors}
